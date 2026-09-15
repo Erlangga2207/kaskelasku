@@ -75,15 +75,69 @@ hPanel → Websites → Advanced → ubah document root menjadi `.../kaskelas/pu
 Ini penting: `.env`, `storage/`, dan `vendor/` harus berada **di luar** folder yang
 bisa diakses publik.
 
-### 4b. Kalau document root tidak bisa diubah
+### 4b. Kalau document root tidak bisa diubah (kasus Hostinger)
 
-Taruh isi `public/` di `public_html/`, sisanya satu tingkat di atasnya, lalu
-sesuaikan path di `public_html/index.php`:
+Hostinger mengunci document root di `~/domains/<domain>/public_html`. Karena itu
+**isi `public/` yang naik ke `public_html`**, sedangkan kode aplikasi duduk satu
+tingkat di atasnya.
+
+Struktur yang benar di server:
+
+```
+~/domains/kaskelasku.my.id/
+├── app_kaskelas/          ← seluruh project (app, vendor, storage, .env, ...)
+└── public_html/           ← HANYA isi folder public/ (index.php, build/, ikon/, ...)
+```
+
+Lewat SSH, dari kondisi "semua ditumpuk di public_html":
+
+```bash
+cd ~/domains/kaskelasku.my.id
+mkdir -p app_kaskelas
+
+# 1. Pindahkan semua kecuali folder public/ ke luar document root
+cd public_html
+shopt -s dotglob nullglob
+for f in *; do [ "$f" = "public" ] || mv -- "$f" ../app_kaskelas/; done
+
+# 2. Naikkan isi public/ menjadi isi public_html
+mv -- public/* ./
+rmdir public
+
+# 3. Sambungkan kembali public_path() Laravel (dipakai storage:link)
+ln -s ../public_html ../app_kaskelas/public
+
+# 4. Arahkan front controller ke lokasi kode yang baru
+sed -i "s#__DIR__\.'/\.\./#__DIR__.'/../app_kaskelas/#g" index.php
+
+# 5. Bersihkan cache yang masih menyimpan path lama
+cd ../app_kaskelas
+php artisan optimize:clear
+```
+
+Setelah langkah 4, tiga baris di `public_html/index.php` harus berbunyi:
 
 ```php
-require __DIR__.'/../kaskelas/vendor/autoload.php';
-$app = require_once __DIR__.'/../kaskelas/bootstrap/app.php';
+if (file_exists($maintenance = __DIR__.'/../app_kaskelas/storage/framework/maintenance.php')) {
+require __DIR__.'/../app_kaskelas/vendor/autoload.php';
+$app = require_once __DIR__.'/../app_kaskelas/bootstrap/app.php';
 ```
+
+Tiga baris itu **milik server, bukan repo**. Setiap kali kamu mengunggah ulang
+`public/index.php`, patch-nya hilang dan situs mati — ulangi langkah 4.
+
+Verifikasi (dari komputermu):
+
+```bash
+curl -sI https://kaskelasku.my.id/build/assets/app-<hash>.css   # harus 200
+curl -sI https://kaskelasku.my.id/composer.json                 # harus 403/404
+curl -sI https://kaskelasku.my.id/storage/logs/laravel.log      # harus 403/404
+```
+
+Yang **tidak boleh** dilakukan: memindahkan `index.php` dan `.htaccess` ke akar
+project lalu mengunggah seluruh project ke `public_html`. Aset gagal dimuat
+(`/build/...` tidak ada karena file sesungguhnya di `/public/build/...`), dan
+`vendor/`, `storage/logs/`, `composer.json`, sampai dokumen PRD ikut terbaca publik.
 
 ---
 
