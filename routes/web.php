@@ -7,8 +7,10 @@ use App\Http\Controllers\ExpenseCategoryController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\ClassroomSettingController;
+use App\Http\Controllers\ClassroomTokenController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PeriodController;
+use App\Http\Controllers\PublicClassController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\StudentBulkController;
 use App\Http\Controllers\StudentController;
@@ -74,4 +76,22 @@ Route::middleware(['auth', 'kelas'])->group(function () {
     // --- Pengaturan kelas ---
     Route::get('/pengaturan', [ClassroomSettingController::class, 'edit'])->name('pengaturan.edit');
     Route::patch('/pengaturan', [ClassroomSettingController::class, 'update'])->name('pengaturan.update');
+    Route::patch('/pengaturan/token', [ClassroomTokenController::class, 'rotate'])->name('pengaturan.token');
 });
+
+/*
+|--------------------------------------------------------------------------
+| Halaman kelas (publik, bertoken)
+|--------------------------------------------------------------------------
+| Grup terpisah, HANYA GET, tanpa middleware auth. Tidak boleh ada satu pun
+| route tulis yang bisa dicapai lewat token publik — kalau suatu saat butuh
+| aksi tulis dari sisi anggota kelas, berarti desainnya perlu ditinjau ulang,
+| bukan grup ini yang ditambahi.
+*/
+Route::middleware('kelas.token')->group(function () {
+    Route::get('/kelas/{token}', [PublicClassController::class, 'show'])->name('publik.kelas');
+    Route::get('/kelas/{token}/manifest.webmanifest', [PublicClassController::class, 'manifest'])
+        ->name('publik.manifest');
+});
+
+Route::view('/offline', 'offline')->name('offline');
