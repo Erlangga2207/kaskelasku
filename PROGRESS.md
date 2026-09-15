@@ -4,7 +4,7 @@ Catatan posisi pengerjaan terhadap `TASKS.md`. Diperbarui 15 September 2026.
 
 ## STATUS SAAT INI
 
-**Fase 0–5 selesai. Kode v1 lengkap dan 72 test hijau.**
+**Fase 0–5 selesai. Kode v1 lengkap dan 77 test hijau.**
 Yang tersisa dari v1 adalah Fase 6, dan isinya hampir seluruhnya tindakan yang
 hanya bisa kamu lakukan sendiri: deploy ke Hostinger lalu memakainya sebulan
 penuh di kelasmu. Panduan langkahnya ada di `DEPLOY.md`.
@@ -14,7 +14,7 @@ baru di atas produk yang belum pernah dipakai siapa pun hanya menambah hal yang
 harus dirawat.
 
 ```
-php artisan test          # 72 test, 273 assertion — semua hijau
+php artisan test          # 77 test, 289 assertion — semua hijau
 ```
 
 ---

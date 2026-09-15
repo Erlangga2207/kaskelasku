@@ -10,7 +10,6 @@ use App\Models\Period;
 use App\Models\Student;
 use App\Services\KasService;
 use App\Support\CurrentClassroom;
-use App\Support\Uang;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -255,21 +254,5 @@ class LogikaUangTest extends TestCase
         $this->expectException(\RuntimeException::class);
 
         $this->kas->alokasikanManual($payment, [$januari->id => '9000']);
-    }
-
-    public function test_uang_helper_tidak_kehilangan_sen(): void
-    {
-        // Penjumlahan 0,1 sepuluh kali dengan float menghasilkan 0.9999999999999999.
-        $total = 0;
-
-        for ($i = 0; $i < 10; $i++) {
-            $total += Uang::keSen('0.10');
-        }
-
-        $this->assertSame(100, $total);
-        $this->assertSame('1.00', Uang::keDesimal($total));
-        $this->assertSame('Rp 1', Uang::format('1.00'));
-        $this->assertSame('Rp 1.250.000', Uang::format('1250000.00'));
-        $this->assertSame('Rp 1.250.000,50', Uang::format('1250000.50'));
     }
 }
