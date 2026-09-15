@@ -22,6 +22,14 @@ class Expense extends Model
         ];
     }
 
+    /** created_by selalu dari user yang login, tidak pernah dari input. */
+    protected static function booted(): void
+    {
+        static::creating(function (self $model) {
+            $model->created_by ??= auth()->id();
+        });
+    }
+
     public function category(): BelongsTo
     {
         return $this->belongsTo(ExpenseCategory::class, 'category_id');
