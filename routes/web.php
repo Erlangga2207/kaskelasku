@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\BillController;
 use App\Http\Controllers\ExpenseCategoryController;
@@ -8,6 +9,7 @@ use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\ClassroomSettingController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PeriodController;
+use App\Http\Controllers\ReportController;
 use App\Http\Controllers\StudentBulkController;
 use App\Http\Controllers\StudentController;
 use Illuminate\Support\Facades\Route;
@@ -63,6 +65,11 @@ Route::middleware(['auth', 'kelas'])->group(function () {
         ->parameters(['pengeluaran' => 'pengeluaran']);
     Route::post('/kategori-pengeluaran', [ExpenseCategoryController::class, 'store'])->name('kategori.store');
     Route::delete('/kategori-pengeluaran/{kategori}', [ExpenseCategoryController::class, 'destroy'])->name('kategori.destroy');
+
+    // --- Pelaporan ---
+    Route::get('/laporan', [ReportController::class, 'index'])->name('laporan.index');
+    Route::get('/laporan/pdf', [ReportController::class, 'pdf'])->name('laporan.pdf');
+    Route::get('/audit', [AuditLogController::class, 'index'])->name('audit.index');
 
     // --- Pengaturan kelas ---
     Route::get('/pengaturan', [ClassroomSettingController::class, 'edit'])->name('pengaturan.edit');
