@@ -1,2 +1,16 @@
+# Halaman kelas bertoken dan seluruh area bendahara tidak boleh diindeks.
+# robots.txt bukan pengamanan — token acak 40 karakter dan header noindex yang
+# menjaga; berkas ini hanya mencegah tautan yang telanjur tersebar ikut terindeks.
+
 User-agent: *
-Disallow:
+Disallow: /kelas/
+Disallow: /dashboard
+Disallow: /siswa
+Disallow: /periode
+Disallow: /pembayaran
+Disallow: /pengeluaran
+Disallow: /laporan
+Disallow: /audit
+Disallow: /pengaturan
+Disallow: /masuk
+Allow: /$

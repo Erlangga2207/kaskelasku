@@ -69,6 +69,61 @@
         </form>
     </x-ui.card>
 
+    <x-ui.card judul="Tautan halaman kelas"
+               keterangan="Bagikan tautan ini ke grup kelas. Siapa pun yang punya tautannya bisa melihat rekap kas — tanpa login, dan tanpa bisa mengubah apa pun.">
+        @php $tautan = route('publik.kelas', $kelas->public_token); @endphp
+
+        <div x-data="{ tersalin: false }" class="space-y-4">
+            <div class="flex flex-col gap-2 sm:flex-row">
+                <label for="tautan-kelas" class="sr-only">Tautan halaman kelas</label>
+                <input type="text" id="tautan-kelas" value="{{ $tautan }}" readonly
+                       onfocus="this.select()"
+                       class="min-h-11 w-full rounded-xl border border-line-strong bg-surface px-3.5 py-2.5 text-sm text-ink-soft">
+
+                <x-ui.button type="button" variant="secondary" class="shrink-0"
+                             x-on:click="navigator.clipboard.writeText('{{ $tautan }}').then(() => {
+                                 tersalin = true;
+                                 setTimeout(() => tersalin = false, 2500);
+                             })">
+                    <x-icon name="salin" class="size-4" />
+                    <span x-text="tersalin ? 'Tersalin' : 'Salin'">Salin</span>
+                </x-ui.button>
+
+                <x-ui.button :href="$tautan" target="_blank" rel="noopener" variant="secondary" class="shrink-0">
+                    <x-icon name="mata" class="size-4" />
+                    Lihat
+                </x-ui.button>
+            </div>
+
+            <div aria-live="polite" class="sr-only" x-text="tersalin ? 'Tautan disalin ke papan klip.' : ''"></div>
+
+            <div class="rounded-xl bg-surface p-4">
+                <p class="text-sm text-ink-soft">
+                    Kalau tautannya telanjur tersebar ke luar kelas, ganti tokennya. Tautan lama langsung mati
+                    dan semua orang perlu tautan yang baru.
+                    @if ($kelas->token_rotated_at)
+                        <span class="mt-1 block text-xs text-ink-faint">
+                            Terakhir diganti {{ $kelas->token_rotated_at->translatedFormat('j M Y, H:i') }}.
+                        </span>
+                    @endif
+                </p>
+
+                <div class="mt-3">
+                    <x-ui.confirm
+                        :action="route('pengaturan.token')"
+                        method="PATCH"
+                        judul="Ganti tautan halaman kelas?"
+                        pesan="Tautan lama langsung tidak berlaku. Kamu perlu membagikan tautan baru ke grup kelas."
+                        tombol="Ganti tautan"
+                        variant="danger">
+                        <x-icon name="putar" class="size-4" />
+                        Ganti tautan kelas
+                    </x-ui.confirm>
+                </div>
+            </div>
+        </div>
+    </x-ui.card>
+
     <x-ui.card judul="Data yang disimpan aplikasi ini">
         <ul class="space-y-2 text-sm text-ink-soft">
             <li class="flex gap-2">

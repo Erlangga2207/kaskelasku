@@ -11,6 +11,12 @@
     <meta name="theme-color" content="#0b1220" media="(prefers-color-scheme: dark)">
     <title>{{ $judul ? $judul.' · KasKelas' : 'KasKelas' }}</title>
 
+    {{-- Area bendahara tidak pernah boleh terindeks mesin pencari. --}}
+    <meta name="robots" content="noindex, nofollow">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="apple-touch-icon" href="/ikon/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/ikon/favicon-32.png">
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet"
@@ -28,5 +34,12 @@
     </a>
 
     {{ $slot }}
+
+    {{-- Service worker hanya meng-cache aset statis. Halaman data selalu ambil jaringan. --}}
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
+        }
+    </script>
 </body>
 </html>
