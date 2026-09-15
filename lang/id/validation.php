@@ -1,0 +1,83 @@
+<?php
+
+/**
+ * Pesan validasi bahasa Indonesia.
+ *
+ * Hanya memuat aturan yang benar-benar dipakai aplikasi ini. Aturan lain jatuh
+ * ke bahasa Inggris (APP_FALLBACK_LOCALE=en), bukan menampilkan kunci mentah.
+ */
+return [
+    'accepted' => ':attribute wajib disetujui.',
+    'after' => ':attribute harus tanggal setelah :date.',
+    'after_or_equal' => ':attribute harus tanggal :date atau sesudahnya.',
+    'before' => ':attribute harus tanggal sebelum :date.',
+    'before_or_equal' => ':attribute harus tanggal :date atau sebelumnya.',
+    'boolean' => ':attribute hanya boleh bernilai ya atau tidak.',
+    'confirmed' => 'Konfirmasi :attribute tidak cocok.',
+    'current_password' => 'Kata sandi salah.',
+    'date' => ':attribute bukan tanggal yang sah.',
+    'date_format' => 'Format :attribute tidak sesuai :format.',
+    'decimal' => ':attribute harus punya :decimal angka di belakang koma.',
+    'different' => ':attribute dan :other harus berbeda.',
+    'email' => 'Format :attribute tidak sah.',
+    'exists' => ':attribute yang dipilih tidak ditemukan.',
+    'file' => ':attribute harus berupa berkas.',
+    'image' => ':attribute harus berupa gambar.',
+    'in' => ':attribute yang dipilih tidak sah.',
+    'integer' => ':attribute harus berupa bilangan bulat.',
+    'max' => [
+        'array' => ':attribute maksimal :max item.',
+        'file' => 'Ukuran :attribute maksimal :max KB.',
+        'numeric' => ':attribute maksimal :max.',
+        'string' => ':attribute maksimal :max karakter.',
+    ],
+    'mimes' => ':attribute harus berjenis: :values.',
+    'mimetypes' => ':attribute harus berjenis: :values.',
+    'min' => [
+        'array' => ':attribute minimal :min item.',
+        'file' => 'Ukuran :attribute minimal :min KB.',
+        'numeric' => ':attribute minimal :min.',
+        'string' => ':attribute minimal :min karakter.',
+    ],
+    'not_in' => ':attribute yang dipilih tidak sah.',
+    'numeric' => ':attribute harus berupa angka.',
+    'prohibited' => ':attribute tidak boleh diisi.',
+    'regex' => 'Format :attribute tidak sah.',
+    'required' => ':attribute wajib diisi.',
+    'required_if' => ':attribute wajib diisi bila :other bernilai :value.',
+    'required_with' => ':attribute wajib diisi bila ada :values.',
+    'same' => ':attribute dan :other harus sama.',
+    'string' => ':attribute harus berupa teks.',
+    'unique' => ':attribute sudah dipakai.',
+    'uploaded' => ':attribute gagal diunggah.',
+    'url' => 'Format :attribute tidak sah.',
+
+    'custom' => [],
+
+    'attributes' => [
+        'nama' => 'nama',
+        'nama_kelas' => 'nama kelas',
+        'sekolah' => 'nama sekolah',
+        'email' => 'email',
+        'password' => 'kata sandi',
+        'no_absen' => 'nomor absen',
+        'tgl_mulai_aktif' => 'tanggal mulai aktif',
+        'tgl_berhenti' => 'tanggal berhenti',
+        'tanggal' => 'tanggal',
+        'jumlah' => 'jumlah',
+        'nominal' => 'nominal',
+        'metode' => 'metode pembayaran',
+        'catatan' => 'catatan',
+        'keterangan' => 'keterangan',
+        'category_id' => 'kategori',
+        'student_id' => 'siswa',
+        'period_id' => 'periode',
+        'bukti' => 'bukti',
+        'alasan_bebas' => 'alasan pembebasan',
+        'jatuh_tempo' => 'jatuh tempo',
+        'tipe_periode' => 'tipe periode',
+        'denda_nominal' => 'nominal denda',
+        'grace_days' => 'masa tenggang',
+        'denda_maks' => 'batas maksimum denda',
+    ],
+];

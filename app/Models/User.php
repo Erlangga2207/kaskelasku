@@ -2,48 +2,45 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
-use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
 class User extends Authenticatable
 {
-    /** @use HasFactory<UserFactory> */
+    /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable;
 
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var list<string>
-     */
-    protected $fillable = [
-        'name',
-        'email',
-        'password',
-    ];
+    protected $fillable = ['nama', 'email', 'password'];
 
-    /**
-     * The attributes that should be hidden for serialization.
-     *
-     * @var list<string>
-     */
-    protected $hidden = [
-        'password',
-        'remember_token',
-    ];
+    protected $hidden = ['password', 'remember_token'];
 
-    /**
-     * Get the attributes that should be cast.
-     *
-     * @return array<string, string>
-     */
     protected function casts(): array
     {
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'is_active' => 'boolean',
         ];
+    }
+
+    /** Kelas yang dimiliki user ini (owner). */
+    public function ownedClassrooms(): HasMany
+    {
+        return $this->hasMany(Classroom::class, 'owner_id');
+    }
+
+    /** Kelas yang boleh diakses user ini — dasar pemilih kelas aktif. */
+    public function classrooms(): BelongsToMany
+    {
+        // Pivot classroom_user hanya punya created_at, jadi tidak memakai withTimestamps().
+        return $this->belongsToMany(Classroom::class)->withPivot('peran', 'created_at');
+    }
+
+    public function isAdminPlatform(): bool
+    {
+        return $this->role === 'admin_platform';
     }
 }
