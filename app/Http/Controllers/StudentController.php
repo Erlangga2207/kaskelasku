@@ -35,6 +35,32 @@ class StudentController extends Controller
         ]);
     }
 
+    /** Kartu iuran satu siswa: tagihan, status, deposit, dan riwayat pembayarannya. */
+    public function show(string $siswa): View
+    {
+        $siswa = $this->cariSiswa($siswa);
+
+        return view('siswa.show', [
+            'siswa' => $siswa,
+            'tagihan' => $this->kelas()->bills()
+                ->where('student_id', $siswa->id)
+                ->with(['period', 'allocations'])
+                ->get()
+                ->sortBy(fn ($bill) => $bill->period?->tgl_mulai?->timestamp ?? PHP_INT_MAX)
+                ->values(),
+            'pembayaran' => $this->kelas()->payments()
+                ->where('student_id', $siswa->id)
+                ->with('allocations')
+                ->orderByDesc('tanggal')
+                ->orderByDesc('id')
+                ->get(),
+            'deposit' => $this->kas->depositSiswa($siswa),
+            'tunggakan' => $this->kas->tunggakanSiswa($siswa, $this->kelas()),
+            'kas' => $this->kas,
+            'kelas' => $this->kelas(),
+        ]);
+    }
+
     public function create(): View
     {
         return view('siswa.form', [

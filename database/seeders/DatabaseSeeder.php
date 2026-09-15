@@ -3,7 +3,6 @@
 namespace Database\Seeders;
 
 use App\Models\Classroom;
-use App\Models\ExpenseCategory;
 use App\Models\Student;
 use App\Models\User;
 use App\Support\CurrentClassroom;
@@ -21,8 +20,6 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         DB::transaction(function () {
-            $this->kategoriBawaan();
-
             $kelasA = $this->buatKelas(
                 bendahara: ['nama' => 'Erlangga Haryo', 'email' => 'bendahara@kaskelas.test'],
                 kelas: ['nama_kelas' => 'XII TRPL 1', 'sekolah' => 'SMKN 1 Subang', 'tipe_periode' => 'bulanan'],
@@ -38,23 +35,6 @@ class DatabaseSeeder extends Seeder
             $this->command?->info("Kelas A: {$kelasA->nama_kelas} — token {$kelasA->public_token}");
             $this->command?->info("Kelas B: {$kelasB->nama_kelas} — token {$kelasB->public_token}");
             $this->command?->info('Kata sandi kedua bendahara: RahasiaKuat123');
-        });
-    }
-
-    /** Kategori bawaan sistem: classroom_id NULL, dipakai bersama semua kelas. */
-    protected function kategoriBawaan(): void
-    {
-        CurrentClassroom::withoutTenancy(function () {
-            foreach (['Konsumsi', 'Alat Tulis', 'Kebersihan', 'Dekorasi Kelas', 'Kegiatan Kelas', 'Lain-lain'] as $nama) {
-                if (ExpenseCategory::whereNull('classroom_id')->where('nama', $nama)->exists()) {
-                    continue;
-                }
-
-                // classroom_id bukan kolom fillable — diisi eksplisit, tidak lewat mass assignment.
-                $kategori = new ExpenseCategory(['nama' => $nama]);
-                $kategori->classroom_id = null;
-                $kategori->save();
-            }
         });
     }
 
