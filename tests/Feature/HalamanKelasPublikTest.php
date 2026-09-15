@@ -190,15 +190,17 @@ class HalamanKelasPublikTest extends TestCase
 
     public function test_berkas_pwa_tersedia(): void
     {
+        // public_path() sengaja diarahkan ke root project (lihat bootstrap/app.php
+        // dan DEPLOY.md), jadi berkas publik duduk sejajar dengan index.php.
         foreach ([
-            'public/manifest.webmanifest',
-            'public/sw.js',
-            'public/robots.txt',
-            'public/ikon/ikon-192.png',
-            'public/ikon/ikon-512.png',
-            'public/ikon/ikon-maskable-512.png',
+            'manifest.webmanifest',
+            'sw.js',
+            'robots.txt',
+            'ikon/ikon-192.png',
+            'ikon/ikon-512.png',
+            'ikon/ikon-maskable-512.png',
         ] as $berkas) {
-            $this->assertFileExists(base_path($berkas));
+            $this->assertFileExists(public_path($berkas));
         }
 
         $this->get(route('offline'))->assertOk()->assertSee('tanpa koneksi');

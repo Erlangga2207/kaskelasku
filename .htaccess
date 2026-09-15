@@ -1,9 +1,44 @@
-<IfModule mod_rewrite.c>
-    <IfModule mod_negotiation.c>
-        Options -MultiViews -Indexes
-    </IfModule>
+# =====================================================================
+# KasKelas — .htaccess untuk document root
+#
+# PENTING: document root = root project Laravel (susunan non-standar,
+# lihat DEPLOY.md). Artinya .env, vendor/, storage/, app/, dsb. secara
+# fisik berada DI DALAM document root dan bisa diminta lewat HTTP.
+# Blok "PROTEKSI FILE SENSITIF" di bawah yang mencegahnya. Jangan
+# dihapus, dan jangan pindahkan ke bawah aturan front controller —
+# file/folder itu benar-benar ada, jadi Apache akan melayaninya
+# langsung sebelum sempat sampai ke index.php.
+# =====================================================================
 
+<IfModule mod_negotiation.c>
+    Options -MultiViews -Indexes
+</IfModule>
+
+<IfModule mod_rewrite.c>
     RewriteEngine On
+
+    # -----------------------------------------------------------------
+    # PROTEKSI FILE SENSITIF (harus paling atas)
+    # -----------------------------------------------------------------
+
+    # Semua dotfile dan dotfolder: .env, .env.production, .git/, .htaccess,
+    # .editorconfig, dsb. Pengecualian /.well-known/ supaya perpanjangan
+    # sertifikat SSL Let's Encrypt di Hostinger tidak ikut terblokir.
+    RewriteCond %{REQUEST_URI} !^/\.well-known/
+    RewriteRule (^|/)\. - [F,L]
+
+    # Folder internal aplikasi. 'uploads' (symlink ke storage/app/public)
+    # sengaja TIDAK ada di daftar ini — itu satu-satunya bagian storage
+    # yang memang boleh publik.
+    RewriteRule ^(app|bootstrap|config|database|lang|node_modules|resources|routes|storage|tests|vendor)(/|$) - [F,L]
+
+    # File internal di root project.
+    RewriteRule ^(artisan|composer\.json|composer\.lock|package\.json|package-lock\.json|phpunit\.xml|vite\.config\.js|schema\.sql|server\.php)$ - [F,L]
+    RewriteRule ^[^/]+\.(md|docx|sql|lock|yml|yaml|sh|bak|old|log|ini)$ - [F,L]
+
+    # -----------------------------------------------------------------
+    # Aturan bawaan Laravel
+    # -----------------------------------------------------------------
 
     # Handle Authorization Header
     RewriteCond %{HTTP:Authorization} .
@@ -22,4 +57,11 @@
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteRule ^ index.php [L]
+</IfModule>
+
+# Lapis kedua, kalau mod_rewrite mati aturan di atas ikut mati.
+<IfModule mod_authz_core.c>
+    <FilesMatch "^(\.env.*|\.git.*|\.htaccess|artisan|composer\.(json|lock)|package(-lock)?\.json|phpunit\.xml|vite\.config\.js|.*\.(md|docx|sql|lock|log|bak|old))$">
+        Require all denied
+    </FilesMatch>
 </IfModule>

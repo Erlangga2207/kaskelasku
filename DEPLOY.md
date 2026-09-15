@@ -1,155 +1,234 @@
 # Deploy KasKelas ke Hostinger Premium
 
-Berkas ini menutup bagian Fase 6 yang bisa disiapkan dari kode. Langkah yang
-menyentuh panel Hostinger tetap harus kamu jalankan sendiri — catat hasilnya di
-`PROGRESS.md` supaya jelas mana yang sudah beres.
+Dokumen ini menggambarkan susunan yang **benar-benar dipakai di produksi**, bukan
+susunan ideal Laravel. Baca bagian 1 sampai habis sebelum menyentuh apa pun —
+susunannya tidak standar, dan sebagian besar masalah deploy di project ini berasal
+dari lupa bahwa ia tidak standar.
 
 ---
 
-## 1. Verifikasi lingkungan (Fase 0 — lakukan sebelum unggah apa pun)
+## 1. Susunan folder: kenapa tidak standar, dan apa konsekuensinya
 
-Cek di hPanel, lalu tulis hasilnya:
+Hostinger mengunci document root di `~/domains/<domain>/public_html` dan tidak
+menyediakan cara mengubahnya di paket Premium. Susunan Laravel normal
+(document root = `project/public`) karena itu tidak bisa dipakai.
+
+Keputusan yang diambil: **seluruh project diratakan ke dalam `public_html`, dan
+folder `public/` dihapus.** Isi `public/` naik satu tingkat menjadi tetangga
+`index.php`.
+
+```
+~/domains/kaskelasku.my.id/public_html/     <- INI document root
+├── index.php            <- front controller, path relatif ke ./ (bukan ../)
+├── .htaccess            <- rewrite Laravel + proteksi file sensitif
+├── .env                 <- ADA DI DALAM document root. Dilindungi .htaccess.
+│
+├── build/               <- hasil `npm run build` (di-build di lokal, diunggah)
+├── ikon/                <- ikon PWA
+├── manifest.webmanifest
+├── sw.js
+├── robots.txt
+├── favicon.ico
+├── uploads/             <- symlink ke storage/app/public (lihat bagian 5)
+│
+├── app/  bootstrap/  config/  database/  lang/  resources/  routes/
+├── storage/  vendor/  tests/
+├── artisan  composer.json  composer.lock
+└── ...
+```
+
+Konsekuensi yang harus selalu diingat:
+
+| Konsekuensi | Kenapa | Ditangani oleh |
+|---|---|---|
+| URL aset **tidak** berawalan `/public/` | document root sudah = root project | `build/` diletakkan di root, bukan di `public/build/` |
+| `public_path()` bawaan Laravel salah arah | defaultnya `base_path('public')`, folder itu sudah tidak ada | `->usePublicPath(dirname(__DIR__))` di `bootstrap/app.php` |
+| Vite tidak menemukan `manifest.json` | Vite membacanya lewat `public_path()` | sama seperti di atas + `publicDirectory: '.'` di `vite.config.js` |
+| Symlink `storage` menabrak `storage/` milik Laravel | keduanya sama-sama di root | symlink dinamai `uploads/`, lihat bagian 5 |
+| `.env`, `vendor/`, `storage/` terekspos ke HTTP | semuanya di dalam document root | blok proteksi di `.htaccess`, lihat bagian 6 |
+
+**Yang mengikat semuanya adalah `public_path()`.** Di project ini
+`public_path() === base_path()`. Kalau suatu saat aset kembali 404, periksa baris
+`usePublicPath` di `bootstrap/app.php` lebih dulu.
+
+### Jangan lakukan ini
+
+- Mengembalikan `index.php` ke dalam folder `public/`.
+- Mengunggah hasil build ke `public_html/public/build/`. URL `/build/...` akan
+  404 — persis bug yang menghabiskan waktu pada deploy pertama.
+- Menghapus blok proteksi di `.htaccess`. Tanpa itu `https://domain/.env`
+  menyajikan kata sandi database sebagai teks biasa.
+- `chmod 777` apa pun. Lihat bagian 7 untuk angka yang benar.
+
+---
+
+## 2. Verifikasi lingkungan (sekali, sebelum deploy pertama)
 
 | Yang dicek | Syarat | Kalau tidak terpenuhi |
 |---|---|---|
-| Versi PHP | 8.2 atau lebih baru | Naikkan di hPanel → PHP Configuration |
-| MySQL / MariaDB | MySQL 8.0.16+ atau MariaDB 10.2+ | `CHECK` constraint pada tabel `bills` akan diabaikan diam-diam — periksa manual |
-| Akses SSH | ada / tidak | Kalau tidak ada, `vendor/` harus diunggah manual tiap deploy (lihat langkah 3b) |
+| Versi PHP | 8.2+ | hPanel -> PHP Configuration |
+| MySQL / MariaDB | MySQL 8.0.16+ / MariaDB 10.2+ | `CHECK` constraint pada `bills` diabaikan diam-diam — periksa manual |
+| Akses SSH | ada / tidak | Tanpa SSH, `vendor/` harus diunggah manual tiap deploy |
 | Composer di server | ada / tidak | Sama seperti di atas |
-| Document root bisa diarahkan | ya / tidak | Kalau tidak bisa, lihat langkah 4b |
-| SMTP | ada / tidak | Baru dibutuhkan di v2.0 (verifikasi email), bukan sekarang |
 
-Ekstensi PHP yang dipakai aplikasi ini: `pdo_mysql`, `mbstring`, `openssl`,
-`fileinfo` (validasi MIME bukti), `gd` atau `imagick` (dompdf). **`bcmath` tidak
-dibutuhkan** — hitungan uang memakai integer sen lewat `App\Support\Uang`.
+Ekstensi PHP yang dipakai: `pdo_mysql`, `mbstring`, `openssl`, `fileinfo`,
+`gd` atau `imagick` (dompdf). **`bcmath` tidak dibutuhkan.**
 
 ---
 
-## 2. Siapkan database
+## 3. Build aset di lokal
 
-1. hPanel → Databases → buat database + user, catat kredensialnya.
-2. Jangan pakai user `root`; beri hak hanya pada database KasKelas.
+Node tidak tersedia di shared hosting, jadi aset **selalu** di-build di komputer
+sendiri lalu diunggah.
+
+```bash
+npm ci
+npm run build
+```
+
+Hasilnya masuk ke `build/` di root project — **bukan** `public/build/`. Itu diatur
+oleh `publicDirectory: '.'` di `vite.config.js`. Jangan kembalikan ke `'public'`
+selama susunan deploy masih seperti ini.
+
+Periksa sebelum mengunggah:
+
+```bash
+ls build/manifest.json build/assets/
+```
+
+Nama berkas di `build/assets/` mengandung hash isi (`app-D48oy-ND.css`). Hash
+berubah setiap kali CSS/JS berubah, jadi **`build/` harus diunggah ulang setiap
+kali `resources/css` atau `resources/js` berubah** — kalau tidak, Blade menunjuk
+hash baru sementara di server masih hash lama, dan hasilnya 404 lagi.
+
+Untuk pengembangan lokal (Laragon, document root di root project) susunan ini
+bekerja apa adanya; `npm run dev` dan `php artisan serve` juga tetap jalan.
 
 ---
 
-## 3. Unggah kode
+## 4. Yang diunggah setiap deploy
 
-### 3a. Kalau SSH tersedia (disarankan)
+| Berubah | Yang harus diunggah ulang |
+|---|---|
+| Kode PHP (`app/`, `routes/`, `config/`, `database/`) | folder yang bersangkutan |
+| Blade (`resources/views/`) | `resources/views/` + `php artisan view:cache` |
+| CSS/JS (`resources/css`, `resources/js`) | **`build/` seluruhnya** (hapus dulu `build/` lama di server supaya aset basi tidak menumpuk) |
+| `composer.json` / `composer.lock` | `vendor/` (atau `composer install --no-dev -o` lewat SSH) |
+| Ikon / PWA | `ikon/`, `manifest.webmanifest`, `sw.js` |
 
-```bash
-git clone <repo> ~/kaskelas
-cd ~/kaskelas
-composer install --no-dev --optimize-autoloader
-```
+**Tidak pernah diunggah:** `.env` (milik server, beda dari lokal), `node_modules/`,
+`storage/` (isinya data hidup — log, sesi, bukti transfer), `uploads/` (symlink),
+`.git/`, `*.md`, `PRD-*.docx`.
 
-Aset front-end **di-build di komputermu**, bukan di server (Node tidak selalu ada
-di shared hosting):
-
-```bash
-npm ci && npm run build      # hasilnya public/build/
-```
-
-Lalu unggah `public/build/` ikut bersama kode.
-
-### 3b. Kalau SSH tidak ada
-
-Jalankan di komputermu:
+Setelah setiap unggah kode atau perubahan `.env`:
 
 ```bash
-composer install --no-dev --optimize-autoloader
-npm ci && npm run build
-```
-
-Lalu unggah seluruh folder termasuk `vendor/` dan `public/build/` lewat File
-Manager atau FTP. Ini artinya **setiap deploy berikutnya juga harus mengunggah
-`vendor/`** — putuskan sejak awal apakah kamu siap dengan itu.
-
----
-
-## 4. Arahkan document root
-
-### 4a. Cara benar
-
-hPanel → Websites → Advanced → ubah document root menjadi `.../kaskelas/public`.
-
-Ini penting: `.env`, `storage/`, dan `vendor/` harus berada **di luar** folder yang
-bisa diakses publik.
-
-### 4b. Kalau document root tidak bisa diubah (kasus Hostinger)
-
-Hostinger mengunci document root di `~/domains/<domain>/public_html`. Karena itu
-**isi `public/` yang naik ke `public_html`**, sedangkan kode aplikasi duduk satu
-tingkat di atasnya.
-
-Struktur yang benar di server:
-
-```
-~/domains/kaskelasku.my.id/
-├── app_kaskelas/          ← seluruh project (app, vendor, storage, .env, ...)
-└── public_html/           ← HANYA isi folder public/ (index.php, build/, ikon/, ...)
-```
-
-Lewat SSH, dari kondisi "semua ditumpuk di public_html":
-
-```bash
-cd ~/domains/kaskelasku.my.id
-mkdir -p app_kaskelas
-
-# 1. Pindahkan semua kecuali folder public/ ke luar document root
-cd public_html
-shopt -s dotglob nullglob
-for f in *; do [ "$f" = "public" ] || mv -- "$f" ../app_kaskelas/; done
-
-# 2. Naikkan isi public/ menjadi isi public_html
-mv -- public/* ./
-rmdir public
-
-# 3. Sambungkan kembali public_path() Laravel (dipakai storage:link)
-ln -s ../public_html ../app_kaskelas/public
-
-# 4. Arahkan front controller ke lokasi kode yang baru
-sed -i "s#__DIR__\.'/\.\./#__DIR__.'/../app_kaskelas/#g" index.php
-
-# 5. Bersihkan cache yang masih menyimpan path lama
-cd ../app_kaskelas
 php artisan optimize:clear
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
 ```
 
-Setelah langkah 4, tiga baris di `public_html/index.php` harus berbunyi:
+Urutannya penting: `optimize:clear` dulu, baru cache ulang. Cache lama menyimpan
+path absolut; kalau tidak dibersihkan, perubahan `usePublicPath` atau `.env` tidak
+terbaca.
+
+---
+
+## 5. Symlink `uploads/` (pengganti `public/storage`)
+
+Bawaan Laravel membuat symlink `public/storage` -> `storage/app/public`. Di susunan
+ini `public_path('storage')` menunjuk ke `storage/` milik Laravel sendiri —
+menabrak. Karena itu `config/filesystems.php` diubah:
 
 ```php
-if (file_exists($maintenance = __DIR__.'/../app_kaskelas/storage/framework/maintenance.php')) {
-require __DIR__.'/../app_kaskelas/vendor/autoload.php';
-$app = require_once __DIR__.'/../app_kaskelas/bootstrap/app.php';
+'links' => [
+    public_path('uploads') => storage_path('app/public'),
+],
 ```
 
-Tiga baris itu **milik server, bukan repo**. Setiap kali kamu mengunggah ulang
-`public/index.php`, patch-nya hilang dan situs mati — ulangi langkah 4.
-
-Verifikasi (dari komputermu):
+dan URL disk publik menjadi `APP_URL/uploads`. Buat symlink-nya di server:
 
 ```bash
-curl -sI https://kaskelasku.my.id/build/assets/app-<hash>.css   # harus 200
-curl -sI https://kaskelasku.my.id/composer.json                 # harus 403/404
-curl -sI https://kaskelasku.my.id/storage/logs/laravel.log      # harus 403/404
+cd ~/domains/kaskelasku.my.id/public_html
+rm -f uploads                       # buang symlink lama yang salah arah, kalau ada
+php artisan storage:link
+ls -l uploads                       # harus: uploads -> .../storage/app/public
 ```
 
-Yang **tidak boleh** dilakukan: memindahkan `index.php` dan `.htaccess` ke akar
-project lalu mengunggah seluruh project ke `public_html`. Aset gagal dimuat
-(`/build/...` tidak ada karena file sesungguhnya di `/public/build/...`), dan
-`vendor/`, `storage/logs/`, `composer.json`, sampai dokumen PRD ikut terbaca publik.
+Kalau SSH tidak tersedia, buat symlink lewat skrip PHP sekali pakai, lalu **hapus
+skripnya**:
+
+```php
+<?php symlink(__DIR__.'/storage/app/public', __DIR__.'/uploads');
+```
+
+Catatan: saat ini aplikasi belum memakai disk `public` sama sekali. Bukti transfer
+disimpan di `storage/app/private/kelas-*` dan disajikan lewat controller
+ber-otorisasi, bukan lewat URL langsung — itu disengaja, jangan dipindah ke
+`uploads/`.
 
 ---
 
-## 5. Konfigurasi `.env` produksi
+## 6. Proteksi file sensitif di `.htaccess`
 
-Salin `.env.example` menjadi `.env`, lalu ubah:
+Karena `.env` dan `vendor/` berada di dalam document root, `public_html/.htaccess`
+memblokir secara eksplisit:
+
+- semua dotfile/dotfolder (`.env`, `.env.*`, `.git/`, `.htaccess`), kecuali
+  `/.well-known/` supaya perpanjangan sertifikat SSL tidak ikut mati;
+- folder `app/ bootstrap/ config/ database/ lang/ node_modules/ resources/
+  routes/ storage/ tests/ vendor/`;
+- berkas `artisan`, `composer.json`, `composer.lock`, `package.json`,
+  `package-lock.json`, `phpunit.xml`, `vite.config.js`, `schema.sql`, serta
+  `*.md`, `*.docx`, `*.sql`, `*.log`, `*.bak`.
+
+Blok itu harus tetap berada **di atas** aturan front controller. File-file tersebut
+benar-benar ada di disk, jadi Apache melayaninya langsung dan tidak pernah sampai
+ke `index.php` — aturan `RewriteCond %{REQUEST_FILENAME} !-f` tidak menolong.
+
+`uploads/` sengaja tidak diblokir; itu satu-satunya bagian `storage/` yang boleh
+publik.
+
+Verifikasi setiap kali `.htaccess` disentuh:
+
+```bash
+curl -sI https://kaskelasku.my.id/.env                       # 403
+curl -sI https://kaskelasku.my.id/composer.json              # 403
+curl -sI https://kaskelasku.my.id/vendor/autoload.php        # 403
+curl -sI https://kaskelasku.my.id/storage/logs/laravel.log   # 403
+curl -sI https://kaskelasku.my.id/DEPLOY.md                  # 403
+```
+
+---
+
+## 7. Perizinan
+
+```bash
+cd ~/domains/kaskelasku.my.id/public_html
+find . -type d -not -path './storage/*' -not -path './bootstrap/cache/*' -exec chmod 755 {} +
+find . -type f -not -path './storage/*' -not -path './bootstrap/cache/*' -exec chmod 644 {} +
+chmod -R 775 storage bootstrap/cache
+chmod 755 artisan
+chmod 600 .env
+```
+
+Aturannya: folder 755, berkas 644, kecuali `storage/` dan `bootstrap/cache/` yang
+775 karena ditulis oleh proses web server, dan `.env` yang 600 — tidak ada proses
+lain yang perlu membacanya. **Jangan pernah 777** — di shared hosting itu berarti
+akun lain di mesin yang sama bisa menulis ke folder aplikasi.
+
+---
+
+## 8. `.env` produksi
+
+`.env` di server berbeda dari `.env` lokal dan tidak pernah ikut diunggah.
 
 ```env
 APP_NAME=KasKelas
 APP_ENV=production
 APP_DEBUG=false
-APP_URL=https://domainmu.com
+APP_URL=https://kaskelasku.my.id
 
 APP_TIMEZONE=Asia/Jakarta
 APP_LOCALE=id
@@ -167,38 +246,32 @@ SESSION_HTTP_ONLY=true
 SESSION_SAME_SITE=lax
 ```
 
-`APP_DEBUG=false` bukan saran — halaman error Laravel menampilkan isi `.env`
-termasuk kata sandi database.
+`APP_DEBUG=false` bukan saran: halaman error Laravel menampilkan isi `.env`,
+termasuk kata sandi database, kepada siapa pun yang memicu error.
+`APP_ENV=production` juga yang mengaktifkan `URL::forceScheme('https')` di
+`AppServiceProvider`.
 
-Lalu:
+Setelah mengubah `.env`, **selalu**:
 
 ```bash
-php artisan key:generate
+php artisan config:clear && php artisan config:cache
+```
+
+Deploy pertama saja:
+
+```bash
+php artisan key:generate      # kalau APP_KEY masih kosong
 php artisan migrate --force
-php artisan db:seed --force      # HANYA sekali, untuk membuat kelas & bendahara pertama
+php artisan db:seed --force   # HANYA sekali; lalu ganti sandi bendahara bawaan
 ```
-
-Setelah seeder jalan, **ganti kata sandi bendahara** dari bawaan seeder.
-
-Terakhir, cache konfigurasi:
-
-```bash
-php artisan config:cache
-php artisan route:cache
-php artisan view:cache
-```
-
-Ulangi ketiganya setiap kali kode atau `.env` berubah.
 
 ---
 
-## 6. Paksa HTTPS
+## 9. Paksa HTTPS
 
-Aplikasi sudah memaksa skema `https` pada URL yang dihasilkannya saat
-`APP_ENV=production` (lihat `app/Providers/AppServiceProvider.php`). Pengalihan
-permintaan HTTP ke HTTPS dilakukan di level web server — aktifkan "Force HTTPS" di
-hPanel, atau tambahkan di `public/.htaccess` **milik server** (jangan di repo,
-supaya pengembangan lokal tidak ikut dipaksa):
+Aktifkan "Force HTTPS" di hPanel. Kalau tidak tersedia, tambahkan di
+`public_html/.htaccess` **milik server** (jangan di repo, supaya dev lokal tidak
+ikut dipaksa), tepat setelah `RewriteEngine On`:
 
 ```apache
 RewriteCond %{HTTPS} !=on
@@ -207,32 +280,39 @@ RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 
 ---
 
-## 7. Perizinan folder
+## 10. Checklist verifikasi setelah deploy
 
 ```bash
-chmod -R 775 storage bootstrap/cache
+H=https://kaskelasku.my.id
+curl -sI $H/                                      # 200 atau 302 ke /login
+curl -sI $H/build/assets/app-<hash>.css           # 200, content-type text/css
+curl -sI $H/build/assets/app-<hash>.js            # 200, content-type javascript
+curl -sI $H/manifest.webmanifest                  # 200
+curl -sI $H/sw.js                                 # 200
+curl -sI $H/ikon/ikon-192.png                     # 200
+curl -sI $H/.env                                  # 403
+curl -sI $H/vendor/autoload.php                   # 403
 ```
 
-Folder `storage/app/private/kelas-*` berisi bukti transfer. Pastikan ia **tidak**
-bisa dijangkau lewat URL — kalau document root sudah benar di `public/`, ia
-otomatis aman.
+Ambil `<hash>` dari `build/manifest.json` di lokal — kalau hash di situ tidak sama
+dengan yang diminta browser, artinya `build/` di server belum diunggah ulang.
 
 ---
 
-## 8. Backup pertama (wajib sebelum dipakai nyata)
+## 11. Backup pertama (wajib sebelum dipakai nyata)
 
-1. hPanel → phpMyAdmin → pilih database → Export → format SQL → simpan.
-2. Simpan salinannya di luar server (Drive/hard disk), **jangan di dalam repo Git**.
-3. Uji restore-nya ke database kosong. Backup yang belum pernah diuji bukan backup.
+1. hPanel -> phpMyAdmin -> pilih database -> Export -> format SQL -> simpan.
+2. Simpan salinannya di luar server, **jangan di dalam repo Git**.
+3. Uji restore ke database kosong. Backup yang belum pernah diuji bukan backup.
 
 ---
 
-## Sisa Fase 6 yang harus kamu kerjakan sendiri
+## Sisa Fase 6 yang harus dikerjakan sendiri
 
 - [ ] Uji seluruh alur utama langsung di HP Android: masuk, tambah siswa, buat
       periode, catat pembayaran, catat pengeluaran, buka halaman kelas, pasang ke
       home screen.
-- [ ] Bagikan tautan kelas ke grup kelasmu.
+- [ ] Bagikan tautan kelas ke grup kelas.
 - [ ] Pakai untuk kelas sendiri minimal satu bulan penuh tanpa kembali ke catatan
       manual.
 

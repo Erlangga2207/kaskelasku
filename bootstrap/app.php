@@ -22,4 +22,9 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
-    })->create();
+    })->create()
+    // Susunan deploy di Hostinger tidak standar: isi folder public/ dipindah ke
+    // document root (public_html), jadi root project == document root. Tanpa baris
+    // ini public_path() masih menunjuk ke base_path('public') yang sudah tidak ada,
+    // dan Vite gagal menemukan build/manifest.json.
+    ->usePublicPath(dirname(__DIR__));

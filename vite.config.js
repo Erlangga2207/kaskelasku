@@ -7,6 +7,10 @@ export default defineConfig({
         laravel({
             input: ['resources/css/app.css', 'resources/js/app.js'],
             refresh: true,
+            // Document root = root project (lihat DEPLOY.md), bukan public/.
+            // Hasil build karena itu langsung ditulis ke ./build, bukan ./public/build,
+            // supaya URL /build/assets/... cocok dengan lokasi file di server.
+            publicDirectory: '.',
         }),
         tailwindcss(),
     ],

@@ -41,7 +41,7 @@ return [
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),
-            'url' => rtrim(env('APP_URL', 'http://localhost'), '/').'/storage',
+            'url' => rtrim(env('APP_URL', 'http://localhost'), '/').'/uploads',
             'visibility' => 'public',
             'throw' => false,
             'report' => false,
@@ -74,7 +74,10 @@ return [
     */
 
     'links' => [
-        public_path('storage') => storage_path('app/public'),
+        // Document root = root project, jadi public_path('storage') akan menabrak
+        // folder storage/ milik Laravel sendiri. Symlink publik karena itu dinamai
+        // 'uploads'. Lihat DEPLOY.md.
+        public_path('uploads') => storage_path('app/public'),
     ],
 
 ];
