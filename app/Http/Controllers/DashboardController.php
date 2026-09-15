@@ -2,21 +2,24 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Student;
-use App\Support\CurrentClassroom;
+use App\Services\KasService;
 use Illuminate\View\View;
 
-/**
- * Fase 1 masih menampilkan ringkasan seadanya. Angka saldo dan tunggakan
- * baru diisi di Fase 4 setelah KasService ada — jangan menebak rumusnya di sini.
- */
 class DashboardController extends Controller
 {
+    public function __construct(private readonly KasService $kas) {}
+
     public function __invoke(): View
     {
+        $kelas = $this->kelas();
+
         return view('dashboard', [
-            'kelas' => CurrentClassroom::getOrFail(),
-            'jumlahSiswaAktif' => Student::aktif()->count(),
+            'kelas' => $kelas,
+            'ringkasan' => $this->kas->ringkasan($kelas),
+            // Lima penunggak terbesar saja — daftar lengkapnya ada di halaman laporan.
+            'tunggakanTeratas' => $this->kas->daftarTunggakan($kelas)->take(5),
+            'rekapTerbaru' => $this->kas->rekapPeriode()->reverse()->take(3)->values(),
+            'riwayatTerbaru' => $this->kas->riwayatTransaksi()->take(6),
         ]);
     }
 }

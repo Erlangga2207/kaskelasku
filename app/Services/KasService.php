@@ -576,4 +576,147 @@ class KasService
             }
         });
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Pelaporan
+    |--------------------------------------------------------------------------
+    | Semua angka di bawah dihitung ulang dari tabel transaksi setiap kali
+    | diminta. Tidak ada kolom ringkasan yang disimpan, sehingga laporan
+    | mustahil "basi" setelah ada transaksi baru.
+    */
+
+    /** Angka utama dashboard & halaman kelas. */
+    public function ringkasan(?Classroom $kelas = null): array
+    {
+        $kelas ??= CurrentClassroom::getOrFail();
+        $tunggakan = $this->daftarTunggakan($kelas);
+
+        return [
+            'saldo' => $this->saldoKas(),
+            'masuk' => $this->totalMasuk(),
+            'keluar' => $this->totalKeluar(),
+            'siswa_aktif' => Student::aktif()->count(),
+            'penunggak' => $tunggakan->count(),
+            'total_tunggakan' => $tunggakan->sum('tunggakan'),
+            'deposit' => $tunggakan->sum('deposit'),
+        ];
+    }
+
+    /**
+     * Tunggakan seluruh siswa, terbesar lebih dulu.
+     *
+     * Query-nya sengaja dimuat sekali lalu dihitung di PHP: satu kelas paling
+     * banyak 60 siswa, jadi jauh lebih murah daripada satu query per siswa.
+     *
+     * @return Collection<int, array{siswa: Student, tunggakan: int, deposit: int, belum_lunas: int}>
+     */
+    public function daftarTunggakan(?Classroom $kelas = null, bool $termasukNonaktif = true): Collection
+    {
+        $kelas ??= CurrentClassroom::getOrFail();
+        $hariIni = now()->startOfDay();
+
+        $siswa = Student::when(! $termasukNonaktif, fn ($q) => $q->where('is_active', true))
+            ->urutAbsen()
+            ->get();
+
+        $tagihan = Bill::where('is_bebas', false)
+            ->with(['period', 'allocations'])
+            ->get()
+            ->groupBy('student_id');
+
+        $dibayar = Payment::selectRaw('student_id, SUM(jumlah) AS total')
+            ->groupBy('student_id')
+            ->pluck('total', 'student_id');
+
+        $teralokasi = PaymentAllocation::join('payments', 'payments.id', '=', 'payment_allocations.payment_id')
+            ->whereNull('payments.deleted_at')
+            ->selectRaw('payments.student_id AS student_id, SUM(payment_allocations.jumlah) AS total')
+            ->groupBy('payments.student_id')
+            ->pluck('total', 'student_id');
+
+        return $siswa
+            ->map(function (Student $s) use ($tagihan, $dibayar, $teralokasi, $kelas, $hariIni) {
+                $miliknya = $tagihan->get($s->id, collect());
+
+                $tunggakan = $miliknya
+                    ->filter(fn (Bill $b) => $b->period === null
+                        || CarbonImmutable::parse($b->period->jatuh_tempo)->lte($hariIni))
+                    ->sum(fn (Bill $b) => $this->sisaTagihan($b) + $this->dendaTagihan($b, $kelas));
+
+                return [
+                    'siswa' => $s,
+                    'tunggakan' => $tunggakan,
+                    'deposit' => max(0, Uang::keSen((string) $dibayar->get($s->id, 0))
+                        - Uang::keSen((string) $teralokasi->get($s->id, 0))),
+                    'belum_lunas' => $miliknya->filter(fn (Bill $b) => $this->sisaTagihan($b) > 0)->count(),
+                ];
+            })
+            ->filter(fn (array $baris) => $baris['tunggakan'] > 0)
+            ->sortByDesc('tunggakan')
+            ->values();
+    }
+
+    /**
+     * Rekap per periode: berapa yang ditagihkan, terkumpul, dan siapa yang lunas.
+     *
+     * @return Collection<int, array{periode: Period, tertagih: int, terkumpul: int, sisa: int, lunas: int, jumlah_tagihan: int}>
+     */
+    public function rekapPeriode(): Collection
+    {
+        $tagihan = Bill::with('allocations')->get()->groupBy('period_id');
+
+        return Period::urutWaktu()->get()->map(function (Period $periode) use ($tagihan) {
+            $miliknya = $tagihan->get($periode->id, collect());
+
+            $tertagih = $miliknya->sum(fn (Bill $b) => $b->is_bebas ? 0 : Uang::keSen($b->nominal));
+            $terkumpul = $miliknya->sum(fn (Bill $b) => $this->dibayarTagihan($b));
+
+            return [
+                'periode' => $periode,
+                'tertagih' => $tertagih,
+                'terkumpul' => $terkumpul,
+                'sisa' => max(0, $tertagih - $terkumpul),
+                'lunas' => $miliknya->filter(fn (Bill $b) => $this->sisaTagihan($b) <= 0)->count(),
+                'jumlah_tagihan' => $miliknya->count(),
+            ];
+        })->values();
+    }
+
+    /**
+     * Riwayat masuk & keluar dalam satu urutan waktu.
+     *
+     * @return Collection<int, array{tanggal: \Carbon\CarbonInterface, jenis: string, keterangan: string, jumlah: int, model: \Illuminate\Database\Eloquent\Model}>
+     */
+    public function riwayatTransaksi(?string $dari = null, ?string $sampai = null): Collection
+    {
+        $pembayaran = Payment::with('student')
+            ->when($dari, fn ($q) => $q->whereDate('tanggal', '>=', $dari))
+            ->when($sampai, fn ($q) => $q->whereDate('tanggal', '<=', $sampai))
+            ->get()
+            ->map(fn (Payment $p) => [
+                'tanggal' => $p->tanggal,
+                'jenis' => 'masuk',
+                'keterangan' => 'Iuran '.($p->student?->nama ?? 'siswa terhapus')
+                    .($p->catatan ? ' — '.$p->catatan : ''),
+                'jumlah' => Uang::keSen($p->jumlah),
+                'model' => $p,
+            ]);
+
+        $pengeluaran = Expense::with('category')
+            ->when($dari, fn ($q) => $q->whereDate('tanggal', '>=', $dari))
+            ->when($sampai, fn ($q) => $q->whereDate('tanggal', '<=', $sampai))
+            ->get()
+            ->map(fn (Expense $e) => [
+                'tanggal' => $e->tanggal,
+                'jenis' => 'keluar',
+                'keterangan' => $e->keterangan.' ('.($e->category?->nama ?? 'tanpa kategori').')',
+                'jumlah' => Uang::keSen($e->jumlah),
+                'model' => $e,
+            ]);
+
+        return $pembayaran->concat($pengeluaran)
+            ->sortByDesc(fn (array $baris) => $baris['tanggal']->timestamp)
+            ->values();
+    }
 }
