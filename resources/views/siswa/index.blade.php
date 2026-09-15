@@ -56,7 +56,10 @@
                             {{ $siswa->no_absen ? str_pad($siswa->no_absen, 2, '0', STR_PAD_LEFT) : '—' }}
                         </span>
 
-                        <span class="font-semibold text-ink">{{ $siswa->nama }}</span>
+                        <a href="{{ route('siswa.show', $siswa) }}"
+                           class="font-semibold text-ink underline-offset-2 hover:text-brand hover:underline">
+                            {{ $siswa->nama }}
+                        </a>
 
                         <span class="flex flex-wrap items-center gap-1.5">
                             @if ($siswa->is_active)

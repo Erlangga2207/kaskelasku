@@ -4,11 +4,16 @@ namespace App\Services;
 
 use App\Models\Bill;
 use App\Models\Classroom;
+use App\Models\Expense;
+use App\Models\Payment;
+use App\Models\PaymentAllocation;
 use App\Models\Period;
 use App\Models\Student;
+use App\Support\CurrentClassroom;
 use App\Support\Uang;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -171,6 +176,9 @@ class KasService
                 ]);
 
                 $dibuat++;
+
+                // Kelebihan bayar periode lalu langsung menutup tagihan baru ini.
+                $this->alokasikanDeposit($siswa);
             });
         });
 
@@ -202,6 +210,10 @@ class KasService
 
                 $dibuat++;
             });
+
+            if ($dibuat > 0) {
+                $this->alokasikanDeposit($siswa);
+            }
         });
 
         return $dibuat;
@@ -264,5 +276,304 @@ class KasService
             ->filter(fn (Bill $bill) => Uang::keSen($bill->nominal) !== Uang::keSen($period->nominal))
             ->each(fn (Bill $bill) => $bill->update(['nominal' => $period->nominal]))
             ->count();
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Perhitungan (PRD bagian 12)
+    |--------------------------------------------------------------------------
+    | Semua nilai dikembalikan dalam satuan SEN agar bebas dari galat pembulatan.
+    | Pemanggil memakai Uang::format() atau Uang::keDesimal() saat menampilkan
+    | atau menyimpannya.
+    */
+
+    /** SUM(payment_allocations.jumlah) untuk satu tagihan. */
+    public function dibayarTagihan(Bill $bill): int
+    {
+        $alokasi = $bill->relationLoaded('allocations')
+            ? $bill->allocations
+            : $bill->allocations()->get();
+
+        return $alokasi->sum(fn (PaymentAllocation $a) => Uang::keSen($a->jumlah));
+    }
+
+    /** Sisa yang masih harus dibayar. Tagihan bebas selalu 0. */
+    public function sisaTagihan(Bill $bill): int
+    {
+        if ($bill->is_bebas) {
+            return 0;
+        }
+
+        return max(0, Uang::keSen($bill->nominal) - $this->dibayarTagihan($bill));
+    }
+
+    /** belum | kurang | lunas | bebas — dihitung, tidak pernah disimpan sebagai kolom. */
+    public function statusTagihan(Bill $bill): string
+    {
+        if ($bill->is_bebas) {
+            return 'bebas';
+        }
+
+        $dibayar = $this->dibayarTagihan($bill);
+        $nominal = Uang::keSen($bill->nominal);
+
+        return match (true) {
+            $dibayar <= 0 => 'belum',
+            $dibayar >= $nominal => 'lunas',
+            default => 'kurang',
+        };
+    }
+
+    /** Saldo deposit siswa = uang yang sudah diterima tapi belum dialokasikan. */
+    public function depositSiswa(Student $siswa): int
+    {
+        $diterima = Uang::keSen((string) Payment::where('student_id', $siswa->id)->sum('jumlah'));
+
+        $teralokasi = Uang::keSen((string) PaymentAllocation::whereIn(
+            'payment_id',
+            Payment::where('student_id', $siswa->id)->select('id')
+        )->sum('jumlah'));
+
+        return max(0, $diterima - $teralokasi);
+    }
+
+    /** Saldo kas kelas = seluruh pembayaran dikurangi seluruh pengeluaran. */
+    public function saldoKas(): int
+    {
+        return Uang::keSen((string) Payment::sum('jumlah'))
+            - Uang::keSen((string) Expense::sum('jumlah'));
+    }
+
+    public function totalMasuk(): int
+    {
+        return Uang::keSen((string) Payment::sum('jumlah'));
+    }
+
+    public function totalKeluar(): int
+    {
+        return Uang::keSen((string) Expense::sum('jumlah'));
+    }
+
+    /**
+     * Denda satu tagihan.
+     *
+     * Dihitung saat ditampilkan, bukan disimpan lewat cron: kalau disimpan,
+     * mengubah pengaturan denda akan meninggalkan angka lama yang salah.
+     */
+    public function dendaTagihan(Bill $bill, ?Classroom $kelas = null, ?CarbonInterface $per = null): int
+    {
+        $kelas ??= CurrentClassroom::getOrFail();
+
+        if (! $kelas->denda_aktif || $bill->is_bebas || $bill->period === null) {
+            return 0;
+        }
+
+        if ($this->sisaTagihan($bill) <= 0) {
+            return 0;
+        }
+
+        $per = CarbonImmutable::parse($per ?? now())->startOfDay();
+        $jatuhTempo = CarbonImmutable::parse($bill->period->jatuh_tempo)->startOfDay();
+        $hariTelat = $jatuhTempo->diffInDays($per, false);
+
+        if ($hariTelat <= $kelas->grace_days) {
+            return 0;
+        }
+
+        $nominalDenda = Uang::keSen($kelas->denda_nominal);
+
+        $denda = $kelas->denda_mode === 'harian'
+            ? ($hariTelat - $kelas->grace_days) * $nominalDenda
+            : $nominalDenda;
+
+        $maks = $kelas->denda_maks === null ? null : Uang::keSen($kelas->denda_maks);
+
+        return $maks === null ? $denda : min($denda, $maks);
+    }
+
+    /** Tunggakan = sisa tagihan yang sudah jatuh tempo, ditambah dendanya. */
+    public function tunggakanSiswa(Student $siswa, ?Classroom $kelas = null): int
+    {
+        $kelas ??= CurrentClassroom::getOrFail();
+        $hariIni = now()->startOfDay();
+
+        return Bill::where('student_id', $siswa->id)
+            ->where('is_bebas', false)
+            ->with(['period', 'allocations'])
+            ->get()
+            ->filter(fn (Bill $bill) => $bill->period === null
+                || CarbonImmutable::parse($bill->period->jatuh_tempo)->lte($hariIni))
+            ->sum(fn (Bill $bill) => $this->sisaTagihan($bill) + $this->dendaTagihan($bill, $kelas));
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Alokasi pembayaran
+    |--------------------------------------------------------------------------
+    | Satu mesin untuk semua kasus: bayar pas, rapel, cicil, bayar di muka.
+    | Iuran insidental (v1.1) juga memakai mesin ini tanpa cabang kode baru —
+    | kalau sampai butuh cabang baru, berarti desainnya yang salah.
+    */
+
+    /**
+     * Tagihan siswa yang belum lunas, terlama lebih dulu.
+     *
+     * Urutan inilah yang membuat rapel bekerja: uang selalu menutup tunggakan
+     * paling tua sebelum menyentuh tagihan yang belum jatuh tempo.
+     */
+    public function tagihanBelumLunas(Student $siswa): Collection
+    {
+        return Bill::where('student_id', $siswa->id)
+            ->where('is_bebas', false)
+            ->with(['period', 'allocations'])
+            ->get()
+            ->sortBy([
+                fn (Bill $a, Bill $b) => ($a->period?->jatuh_tempo?->timestamp ?? PHP_INT_MAX)
+                    <=> ($b->period?->jatuh_tempo?->timestamp ?? PHP_INT_MAX),
+                fn (Bill $a, Bill $b) => $a->id <=> $b->id,
+            ])
+            ->filter(fn (Bill $bill) => $this->sisaTagihan($bill) > 0)
+            ->values();
+    }
+
+    /**
+     * Membagi uang yang belum teralokasi milik seorang siswa ke tagihannya.
+     *
+     * Dipanggil setelah pembayaran baru, dan juga setelah tagihan baru muncul —
+     * itulah yang membuat kelebihan bayar otomatis terpakai di periode berikutnya.
+     *
+     * @return int jumlah sen yang berhasil dialokasikan
+     */
+    public function alokasikanDeposit(Student $siswa): int
+    {
+        return DB::transaction(function () use ($siswa) {
+            $tagihan = $this->tagihanBelumLunas($siswa);
+
+            if ($tagihan->isEmpty()) {
+                return 0;
+            }
+
+            $pembayaran = Payment::where('student_id', $siswa->id)
+                ->with('allocations')
+                ->orderBy('tanggal')
+                ->orderBy('id')
+                ->get();
+
+            $terpakai = 0;
+            $indeks = 0;
+            $sisaTagihan = $tagihan->map(fn (Bill $bill) => $this->sisaTagihan($bill))->all();
+
+            foreach ($pembayaran as $bayar) {
+                $sisaBayar = Uang::keSen($bayar->jumlah)
+                    - $bayar->allocations->sum(fn (PaymentAllocation $a) => Uang::keSen($a->jumlah));
+
+                while ($sisaBayar > 0 && $indeks < $tagihan->count()) {
+                    if ($sisaTagihan[$indeks] <= 0) {
+                        $indeks++;
+
+                        continue;
+                    }
+
+                    $porsi = min($sisaBayar, $sisaTagihan[$indeks]);
+
+                    PaymentAllocation::create([
+                        'payment_id' => $bayar->id,
+                        'bill_id' => $tagihan[$indeks]->id,
+                        'jumlah' => Uang::keDesimal($porsi),
+                    ]);
+
+                    $sisaBayar -= $porsi;
+                    $sisaTagihan[$indeks] -= $porsi;
+                    $terpakai += $porsi;
+                }
+            }
+
+            return $terpakai;
+        });
+    }
+
+    /**
+     * Alokasi manual: bendahara menentukan sendiri tagihan mana yang dibayar.
+     *
+     * @param  array<int|string, string|int|null>  $rincian  [bill_id => jumlah]
+     *
+     * @throws RuntimeException bila total melebihi nilai pembayaran atau sisa tagihan
+     */
+    public function alokasikanManual(Payment $payment, array $rincian): int
+    {
+        return DB::transaction(function () use ($payment, $rincian) {
+            $this->batalkanAlokasi($payment);
+
+            $sisaBayar = Uang::keSen($payment->jumlah);
+            $terpakai = 0;
+
+            foreach ($rincian as $billId => $jumlah) {
+                $porsi = Uang::keSen($jumlah);
+
+                if ($porsi <= 0) {
+                    continue;
+                }
+
+                // Lewat relasi kelas aktif, bukan Bill::find() dari input mentah.
+                $bill = Bill::where('id', $billId)
+                    ->where('student_id', $payment->student_id)
+                    ->with('allocations')
+                    ->first();
+
+                if ($bill === null) {
+                    throw new RuntimeException('Tagihan yang dipilih tidak ada di kelas ini.');
+                }
+
+                if ($bill->is_bebas) {
+                    throw new RuntimeException('Tagihan yang dibebaskan tidak bisa dibayar.');
+                }
+
+                if ($porsi > $this->sisaTagihan($bill)) {
+                    throw new RuntimeException(
+                        "Alokasi untuk tagihan {$bill->id} melebihi sisa tagihannya."
+                    );
+                }
+
+                if ($porsi > $sisaBayar) {
+                    throw new RuntimeException('Total alokasi melebihi jumlah uang yang dibayarkan.');
+                }
+
+                PaymentAllocation::create([
+                    'payment_id' => $payment->id,
+                    'bill_id' => $bill->id,
+                    'jumlah' => Uang::keDesimal($porsi),
+                ]);
+
+                $sisaBayar -= $porsi;
+                $terpakai += $porsi;
+            }
+
+            return $terpakai;
+        });
+    }
+
+    /** Melepas seluruh alokasi sebuah pembayaran; uangnya kembali jadi deposit siswa. */
+    public function batalkanAlokasi(Payment $payment): void
+    {
+        PaymentAllocation::where('payment_id', $payment->id)->get()->each->delete();
+    }
+
+    /**
+     * Menghapus pembayaran: alokasinya dilepas dan barisnya di-soft delete.
+     * Status tagihan otomatis pulih karena dihitung ulang dari alokasi yang tersisa.
+     */
+    public function hapusPembayaran(Payment $payment): void
+    {
+        DB::transaction(function () use ($payment) {
+            $siswa = $payment->student;
+
+            $this->batalkanAlokasi($payment);
+            $payment->delete();
+
+            // Deposit siswa lain yang menganggur bisa jadi kini punya tempat.
+            if ($siswa) {
+                $this->alokasikanDeposit($siswa);
+            }
+        });
     }
 }

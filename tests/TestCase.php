@@ -49,7 +49,9 @@ abstract class TestCase extends BaseTestCase
             $classroom->public_token = Classroom::generateToken();
             $classroom->save();
 
-            return $classroom;
+            // refresh() supaya nilai default dari database (denda_aktif, status, dll)
+            // ikut termuat — bukan null seperti pada objek yang baru dibuat.
+            return $classroom->refresh();
         });
 
         $classroom->users()->attach($user->id, ['peran' => 'bendahara', 'created_at' => now()]);
