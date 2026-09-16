@@ -58,10 +58,33 @@ class PeriodController extends Controller
             ->get()
             ->sum(fn (Period $p) => $this->kas->generateTagihanPeriode($p));
 
+        // Periode tanpa tagihan adalah gejala, bukan keberhasilan. Bug produksi
+        // pertama justru lolos karena keadaan ini dilaporkan seolah baik-baik saja.
+        if ($tagihan === 0) {
+            return redirect()->route('periode.index')->with(
+                'peringatan',
+                "{$dibuat} periode dibuat, tapi TIDAK ADA satu pun tagihan yang terbentuk. "
+                    .$this->alasanTanpaTagihan()
+            );
+        }
+
         return redirect()->route('periode.index')->with(
             'sukses',
             "{$dibuat} periode dibuat beserta {$tagihan} tagihan siswa."
         );
+    }
+
+    /** Menerjemahkan "0 tagihan" jadi sebab yang bisa ditindaklanjuti bendahara. */
+    protected function alasanTanpaTagihan(): string
+    {
+        if ($this->kelas()->students()->where('is_active', true)->count() === 0) {
+            return 'Kelas ini belum punya siswa aktif — tambahkan daftar siswa di menu Siswa, '
+                .'tagihannya dibuat otomatis setelah itu.';
+        }
+
+        return 'Siswa aktif ada, tapi tidak ada yang cocok dengan rentang periode ini. '
+            .'Periksa tanggal mulai aktif & tanggal berhenti siswa, atau jalankan '
+            .'perintah kaskelas:perbaiki-tagihan.';
     }
 
     /**

@@ -48,10 +48,13 @@ class StudentBulkController extends Controller
             return back()->withInput()->with('galat', 'Tidak ada nama yang bisa dibaca dari daftar itu.');
         }
 
+        $adaPeriodeTertagih = $this->kelas()->periods()->where('is_libur', false)->exists();
+
         $dibuat = 0;
         $dilewati = [];
+        $tagihan = 0;
 
-        DB::transaction(function () use ($baris, $namaAda, &$nomorTerpakai, &$nomorBerikutnya, $data, &$dibuat, &$dilewati) {
+        DB::transaction(function () use ($baris, $namaAda, &$nomorTerpakai, &$nomorBerikutnya, $data, &$dibuat, &$dilewati, &$tagihan) {
             foreach ($baris as $item) {
                 if (in_array(mb_strtolower($item['nama']), $namaAda, true)) {
                     $dilewati[] = $item['nama'];
@@ -75,16 +78,26 @@ class StudentBulkController extends Controller
                     'tgl_mulai_aktif' => $data['tgl_mulai_aktif'],
                 ]);
 
-                $this->kas->generateTagihanSiswa($siswa);
+                $tagihan += $this->kas->generateTagihanSiswa($siswa);
                 $dibuat++;
             }
         });
 
-        $pesan = "{$dibuat} siswa ditambahkan.";
+        $pesan = "{$dibuat} siswa ditambahkan".($tagihan > 0 ? " beserta {$tagihan} tagihan periode." : '.');
 
         if ($dilewati !== []) {
             $pesan .= ' Dilewati karena namanya sudah ada: '.implode(', ', array_slice($dilewati, 0, 5))
                 .(count($dilewati) > 5 ? ' dan '.(count($dilewati) - 5).' lainnya' : '').'.';
+        }
+
+        // Menempel 30 nama ke kelas yang sudah punya periode HARUS menghasilkan
+        // tagihan. Kalau nol, itu kerusakan — bukan hasil yang layak dibilang sukses.
+        if ($dibuat > 0 && $tagihan === 0 && $adaPeriodeTertagih) {
+            return redirect()->route('siswa.index')->with(
+                'peringatan',
+                $pesan.' TAPI tidak ada satu pun tagihan yang terbentuk, padahal kelas ini sudah punya periode. '
+                    .'Periksa tanggal mulai aktif yang dipakai, atau jalankan perintah kaskelas:perbaiki-tagihan.'
+            );
         }
 
         return redirect()->route('siswa.index')->with($dibuat > 0 ? 'sukses' : 'peringatan', $pesan);

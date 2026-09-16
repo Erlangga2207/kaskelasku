@@ -40,8 +40,21 @@ class PaymentController extends Controller
         ]);
     }
 
-    public function create(Request $request): View
+    public function create(Request $request): View|RedirectResponse
     {
+        // Tanpa periode tidak ada tagihan, sehingga setiap pembayaran mendarat
+        // sebagai deposit menggantung — uangnya masuk tapi rekap per periode
+        // tetap Rp 0. Bendahara diarahkan membuat periode dulu, bukan dibiarkan
+        // mencatat uang ke ruang kosong.
+        if (! $this->kelas()->periods()->where('is_libur', false)->exists()) {
+            return redirect()->route('periode.index')->with(
+                'peringatan',
+                'Kelas ini belum punya periode iuran, jadi belum ada tagihan yang bisa dibayar. '
+                    .'Buat periodenya dulu di halaman ini — pembayaran yang dicatat sekarang hanya akan '
+                    .'mengendap sebagai deposit dan tidak muncul di rekap per periode.'
+            );
+        }
+
         $siswa = $request->query('siswa')
             ? $this->kelas()->students()->find($request->query('siswa'))
             : null;

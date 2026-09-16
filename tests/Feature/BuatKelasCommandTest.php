@@ -193,15 +193,24 @@ class BuatKelasCommandTest extends TestCase
 
     public function test_tagihan_ikut_dibuat_kalau_kelasnya_sudah_punya_siswa(): void
     {
-        // Membuktikan pemanggilan generateTagihanPeriode benar-benar bekerja, bukan
-        // sekadar mengembalikan nol karena kelas baru selalu kosong.
+        // Periode dibuat lebih dulu oleh perintah, siswanya menyusul — urutan yang
+        // sama dengan pemakaian nyata. Siswa ditambahkan LEWAT ROUTE bendahara,
+        // karena Student::create() langsung memang bukan yang membuat tagihan;
+        // versi lama test ini memanggil model langsung dan karena itu selalu merah.
         $this->jalankan()->assertSuccessful()->run();
 
         $kelas = CurrentClassroom::withoutTenancy(
             fn () => Classroom::where('nama_kelas', 'XII TRPL 2')->firstOrFail()
         );
+        $user = User::where('email', 'bendahara-baru@kaskelas.test')->firstOrFail();
 
-        $siswa = $this->buatSiswa($kelas, 'Siswa Menyusul', ['tgl_mulai_aktif' => '2026-01-01']);
+        $this->actingAs($user)->post(route('siswa.store'), [
+            'nama' => 'Siswa Menyusul',
+            'no_absen' => 1,
+            'tgl_mulai_aktif' => '2026-01-01',
+        ])->assertRedirect(route('siswa.index'));
+
+        $siswa = $this->dalamKelas($kelas, fn () => Student::where('nama', 'Siswa Menyusul')->firstOrFail());
 
         $this->assertSame(3, $this->dalamKelas($kelas, fn () => Bill::where('student_id', $siswa->id)->count()));
     }

@@ -18,6 +18,17 @@ class Student extends Model
 
     protected $fillable = ['nama', 'no_absen', 'tgl_mulai_aktif', 'tgl_berhenti', 'is_active'];
 
+    /**
+     * is_active WAJIB punya nilai bawaan di sini, bukan hanya DEFAULT TRUE di migrasi.
+     *
+     * Model::create() tidak membaca ulang barisnya dari database, jadi nilai DEFAULT
+     * kolom tidak pernah mendarat di objek hasilnya. Tanpa baris ini,
+     * $siswa->is_active bernilai null persis setelah siswa dibuat — padahal di
+     * database barisnya 1 — dan setiap pemeriksaan "siswa ini aktif?" pada objek
+     * itu gagal diam-diam. Itulah yang membuat siswa baru tidak kebagian tagihan.
+     */
+    protected $attributes = ['is_active' => true];
+
     protected function casts(): array
     {
         return [

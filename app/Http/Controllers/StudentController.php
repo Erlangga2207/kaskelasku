@@ -77,10 +77,28 @@ class StudentController extends Controller
         // rentangnya masih mencakup tanggal mulai aktifnya.
         $tagihan = $this->kas->generateTagihanSiswa($siswa);
 
+        // Sudah ada periode tapi nol tagihan berarti ada yang salah — dulu
+        // keadaan ini dilaporkan sebagai sukses dan bug-nya baru ketahuan
+        // berbulan-bulan kemudian.
+        if ($tagihan === 0 && $this->adaPeriodeTertagih()) {
+            return redirect()->route('siswa.index')->with(
+                'peringatan',
+                "Siswa {$siswa->nama} ditambahkan, tapi tidak ada tagihan yang terbentuk untuknya. "
+                    .'Periksa tanggal mulai aktifnya terhadap rentang periode yang ada, '
+                    .'atau jalankan perintah kaskelas:perbaiki-tagihan.'
+            );
+        }
+
         return redirect()->route('siswa.index')->with(
             'sukses',
             "Siswa {$siswa->nama} ditambahkan".($tagihan > 0 ? " beserta {$tagihan} tagihan periode." : '.')
         );
+    }
+
+    /** Ada periode yang semestinya menagih? Kalau tidak, nol tagihan memang wajar. */
+    protected function adaPeriodeTertagih(): bool
+    {
+        return $this->kelas()->periods()->where('is_libur', false)->exists();
     }
 
     public function edit(string $siswa): View
