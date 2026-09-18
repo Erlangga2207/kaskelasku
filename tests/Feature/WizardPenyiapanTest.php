@@ -167,6 +167,40 @@ class WizardPenyiapanTest extends TestCase
         }
     }
 
+    /**
+     * Ketiga langkah wizard benar-benar dirender, bukan cuma jadi tujuan
+     * pantulan. `wizard.siswa` khususnya: seluruh test lain hanya memeriksa
+     * bahwa sesuatu memantul KE sana, jadi isinya tidak pernah dieksekusi.
+     */
+    public function test_ketiga_halaman_wizard_benar_benar_dirender(): void
+    {
+        $user = $this->bendaharaBaru();
+
+        $this->actingAs($user)->get(route('wizard.kelas'))
+            ->assertOk()
+            ->assertSee('name="nama_kelas"', false)
+            ->assertSee('name="persetujuan_data"', false);
+
+        [$kelas] = $this->buatKelas();
+        $kelas->users()->attach($user->id, ['peran' => 'bendahara', 'created_at' => now()]);
+        session([SetCurrentClassroom::SESSION_KEY => $kelas->id]);
+
+        // Langkah 2: kelas ada, siswa belum.
+        $this->actingAs($user)->get(route('wizard.siswa'))
+            ->assertOk()
+            ->assertSee('name="daftar"', false)
+            ->assertSee(route('siswa.massal.store'), false);
+
+        $this->buatSiswa($kelas, 'Adinda');
+
+        // Langkah 3, beserta peringatan yang jadi alasan seluruh wizard ini ada.
+        $this->actingAs($user)->get(route('wizard.periode'))
+            ->assertOk()
+            ->assertSee('name="nominal"', false)
+            ->assertSee(route('periode.store'), false)
+            ->assertSee('tidak ada tagihan yang terbentuk', false);
+    }
+
     /** Langkah wizard melompat sendiri ke langkah yang memang belum beres. */
     public function test_langkah_wizard_melompat_sesuai_keadaan_kelas(): void
     {

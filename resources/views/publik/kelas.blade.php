@@ -115,10 +115,19 @@
              uang masuk secara manual. --}}
         <x-ui.card judul="Bayar lewat QRIS" padat>
             <div class="flex flex-col items-center gap-4 px-4 py-4 sm:flex-row sm:items-start sm:px-5">
+                {{--
+                    width/height eksplisit (224 = w-56) supaya browser sudah
+                    menyiapkan ruangnya sebelum gambar selesai dimuat; tanpa itu
+                    seluruh isi halaman melompat saat QRIS-nya muncul, dan
+                    halaman ini justru paling sering dibuka di jaringan seluler.
+                    object-contain menjaga rasio aslinya: berkasnya diunggah
+                    bendahara, jadi tidak boleh diandaikan persis persegi.
+                --}}
                 <img src="{{ route('publik.qris', $kelas->public_token) }}"
                      alt="Kode QRIS kas kelas {{ $kelas->nama_kelas }}"
                      loading="lazy"
-                     class="w-56 max-w-full shrink-0 rounded-xl border border-line bg-white p-3">
+                     width="224" height="224"
+                     class="size-56 max-w-full shrink-0 rounded-xl border border-line bg-white object-contain p-3">
 
                 <div class="min-w-0 flex-1 space-y-2 text-center sm:text-left">
                     @if ($kelas->qris_nama_pemilik)

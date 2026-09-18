@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\AuditLog;
 use App\Models\Bill;
 use App\Models\BookClosing;
 use App\Models\Campaign;
@@ -9,6 +10,7 @@ use App\Models\Classroom;
 use App\Models\Expense;
 use App\Models\ExpenseCategory;
 use App\Models\Payment;
+use App\Models\PaymentAllocation;
 use App\Models\Period;
 use App\Models\Student;
 use App\Models\User;
@@ -274,11 +276,11 @@ class IsolasiMenyeluruhTest extends TestCase
             Period::class => 'periods',
             Bill::class => 'bills',
             Payment::class => 'payments',
-            \App\Models\PaymentAllocation::class => 'payment_allocations',
+            PaymentAllocation::class => 'payment_allocations',
             Expense::class => 'expenses',
             Campaign::class => 'campaigns',
             BookClosing::class => 'book_closings',
-            \App\Models\AuditLog::class => 'audit_logs',
+            AuditLog::class => 'audit_logs',
         ];
 
         foreach ($model as $kelasModel => $tabel) {
@@ -317,7 +319,7 @@ class IsolasiMenyeluruhTest extends TestCase
 
         foreach ([
             Student::class, Period::class, Bill::class, Payment::class,
-            \App\Models\PaymentAllocation::class, Expense::class,
+            PaymentAllocation::class, Expense::class,
             Campaign::class, BookClosing::class,
         ] as $model) {
             $this->assertSame(0, $model::count(),

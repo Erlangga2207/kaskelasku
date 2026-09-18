@@ -11,6 +11,7 @@ use App\Models\Payment;
 use App\Models\Student;
 use App\Models\User;
 use App\Support\CurrentClassroom;
+use App\Support\Kapasitas;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
@@ -64,6 +65,53 @@ class HalamanPemasaranTest extends TestCase
         $respons->assertSee('og:image', false);
         $respons->assertSee('og:image:width', false);
         $respons->assertSee('twitter:card', false);
+    }
+
+    /**
+     * Setiap berkas statis yang dirujuk halaman pemasaran benar-benar ada.
+     *
+     * Ini menutup satu bug nyata: `og:image` sempat menunjuk berkas yang tidak
+     * pernah dibuat. Halamannya tetap 200 dan tidak ada gejala apa pun di
+     * layar — yang rusak baru terlihat saat tautannya ditempel ke WhatsApp,
+     * yaitu tepat satu-satunya tempat gambar itu dipakai.
+     */
+    public function test_seluruh_berkas_yang_dirujuk_halaman_pemasaran_benar_benar_ada(): void
+    {
+        foreach (['beranda', 'panduan', 'privasi', 'syarat'] as $nama) {
+            $isi = $this->get(route($nama))->assertOk()->getContent();
+
+            preg_match_all('#(?:href|src|content)="(?:https?://[^/"]+)?(/[\w./-]+\.(?:png|jpg|svg|ico|webmanifest))"#',
+                $isi, $cocok);
+
+            $berkas = array_unique($cocok[1]);
+
+            $this->assertNotEmpty($berkas, "Halaman {$nama} tidak merujuk satu berkas statis pun — "
+                .'setidaknya favicon dan og:image seharusnya ada.');
+
+            foreach ($berkas as $jalur) {
+                // public_path() diarahkan ke root project (lihat bootstrap/app.php).
+                $this->assertFileExists(public_path(ltrim($jalur, '/')),
+                    "Halaman {$nama} merujuk {$jalur}, tapi berkasnya tidak ada.");
+            }
+        }
+    }
+
+    /** Gambar Open Graph harus 1200x630 — ukuran yang diumumkan di meta tag. */
+    public function test_gambar_open_graph_berukuran_benar(): void
+    {
+        $isi = $this->get(route('beranda'))->assertOk()->getContent();
+
+        preg_match('#<meta property="og:image" content="(?:https?://[^/"]+)?(/[\w./-]+\.png)"#',
+            $isi, $cocok);
+
+        $this->assertNotEmpty($cocok, 'Beranda tidak memasang og:image.');
+
+        [$lebar, $tinggi] = getimagesize(public_path(ltrim($cocok[1], '/')));
+
+        // Meta tag menjanjikan 1200x630. Ukuran yang tidak cocok membuat
+        // pratinjau terpotong di sebagian aplikasi chat.
+        $this->assertSame(1200, $lebar);
+        $this->assertSame(630, $tinggi);
     }
 
     /** Halaman pemasaran boleh diindeks — dan HARUS, kalau tidak sia-sia dibuat. */
@@ -259,7 +307,7 @@ class HalamanPemasaranTest extends TestCase
     {
         $this->artisan('kaskelas:reset-demo')->assertSuccessful();
 
-        $this->assertSame(0, \App\Support\Kapasitas::jumlahKelasSistem(),
+        $this->assertSame(0, Kapasitas::jumlahKelasSistem(),
             'Kelas demo bukan milik pengguna, jadi tidak boleh memakan kuota.');
 
         $demo = CurrentClassroom::withoutTenancy(

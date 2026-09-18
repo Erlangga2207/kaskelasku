@@ -7,6 +7,7 @@ use App\Models\Student;
 use App\Models\User;
 use App\Models\WaitingListEntry;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
 /**
@@ -179,7 +180,7 @@ class AdminPlatformTest extends TestCase
     /** Tidak ada route admin yang menerima id kelas — permukaannya memang tidak ada. */
     public function test_tidak_ada_route_admin_yang_bisa_menunjuk_satu_kelas(): void
     {
-        $routeAdmin = collect(\Illuminate\Support\Facades\Route::getRoutes())
+        $routeAdmin = collect(Route::getRoutes())
             ->filter(fn ($r) => str_starts_with((string) $r->getName(), 'admin.'))
             ->map(fn ($r) => $r->uri().' ['.implode(',', $r->methods()).']')
             ->values()

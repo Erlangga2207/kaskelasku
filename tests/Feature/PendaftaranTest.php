@@ -6,6 +6,7 @@ use App\Models\Classroom;
 use App\Models\User;
 use App\Models\WaitingListEntry;
 use App\Support\CurrentClassroom;
+use App\Support\Kapasitas;
 use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
@@ -62,6 +63,35 @@ class PendaftaranTest extends TestCase
         $this->assertAuthenticatedAs($user);
 
         Notification::assertSentTo($user, VerifyEmail::class);
+    }
+
+    /**
+     * Formulir pendaftaran dan halaman verifikasi benar-benar dirender.
+     *
+     * Terlihat sepele, tapi sebelum test ini ada, kedua Blade itu tidak pernah
+     * sekali pun dieksekusi oleh test mana pun — hanya tujuan pantulannya yang
+     * diperiksa. Satu salah ketik di dalamnya akan lolos sampai produksi.
+     */
+    public function test_halaman_daftar_dan_verifikasi_benar_benar_dirender(): void
+    {
+        $this->get(route('daftar'))
+            ->assertOk()
+            ->assertSee('name="email"', false)
+            ->assertSee('name="password_confirmation"', false)
+            ->assertSee('name="setuju_syarat"', false)
+            ->assertSee(route('syarat'), false)
+            ->assertSee(route('privasi'), false);
+
+        $user = User::create([
+            'nama' => 'Belum Terverifikasi',
+            'email' => 'belum@contoh.test',
+            'password' => 'RahasiaKuat123',
+        ]);
+
+        $this->actingAs($user)->get(route('verifikasi.notice'))
+            ->assertOk()
+            ->assertSee($user->email)
+            ->assertSee(route('verifikasi.kirim-ulang'), false);
     }
 
     public function test_pendaftaran_menolak_input_yang_tidak_lengkap(): void
@@ -339,8 +369,8 @@ class PendaftaranTest extends TestCase
             'kaskelas.batas.siswa_per_kelas' => 41,
         ]);
 
-        $this->assertSame(7, \App\Support\Kapasitas::batasKelasSistem());
-        $this->assertSame(3, \App\Support\Kapasitas::batasKelasPerAkun());
-        $this->assertSame(41, \App\Support\Kapasitas::batasSiswaPerKelas());
+        $this->assertSame(7, Kapasitas::batasKelasSistem());
+        $this->assertSame(3, Kapasitas::batasKelasPerAkun());
+        $this->assertSame(41, Kapasitas::batasSiswaPerKelas());
     }
 }

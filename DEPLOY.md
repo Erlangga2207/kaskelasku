@@ -97,9 +97,34 @@ ls build/manifest.json build/assets/
 ```
 
 Nama berkas di `build/assets/` mengandung hash isi (`app-D48oy-ND.css`). Hash
-berubah setiap kali CSS/JS berubah, jadi **`build/` harus diunggah ulang setiap
-kali `resources/css` atau `resources/js` berubah** — kalau tidak, Blade menunjuk
-hash baru sementara di server masih hash lama, dan hasilnya 404 lagi.
+berubah setiap kali hasil build berubah, jadi **`build/` harus diunggah ulang
+setiap kali di-build ulang** — kalau tidak, Blade menunjuk hash baru sementara di
+server masih hash lama, dan hasilnya 404 lagi.
+
+### Jebakan Tailwind v4: Blade berubah = CSS ikut berubah
+
+Ini sudah pernah terjadi sungguhan, jadi baca bagian ini sebelum menyimpulkan
+"kan cuma ngubah tampilan, CSS-nya tidak tersentuh".
+
+Tailwind v4 **memindai berkas sumber** (`@source` di `resources/css/app.css`) dan
+hanya membuat CSS untuk class yang benar-benar dipakai. Artinya: begitu sebuah
+Blade memakai class yang belum pernah dipakai di mana pun — `py-20`, `max-w-5xl`,
+apa saja — class itu **tidak ada** di CSS lama.
+
+Yang bikin repot, gejalanya menyesatkan. Halaman tetap 200, tidak ada error di
+console, dan sebagian besar tampilan terlihat benar — karena class yang sudah
+dipakai halaman lain tetap ada. Yang hilang hanya class yang baru dipakai di
+halaman baru, jadi hasilnya terlihat seperti "CSS-nya berantakan sedikit", bukan
+seperti "aset gagal dimuat".
+
+Aturannya sederhana: **ubah Blade apa pun → `npm run build` → unggah `build/`.**
+
+Kalau tampilan terasa janggal setelah menambah halaman, periksa dulu apakah
+class-nya memang ada di CSS hasil build:
+
+```bash
+grep -c 'py-20' build/assets/app-*.css      # 0 = CSS-nya basi, build ulang
+```
 
 Untuk pengembangan lokal (Laragon, document root di root project) susunan ini
 bekerja apa adanya; `npm run dev` dan `php artisan serve` juga tetap jalan.
@@ -111,8 +136,8 @@ bekerja apa adanya; `npm run dev` dan `php artisan serve` juga tetap jalan.
 | Berubah | Yang harus diunggah ulang |
 |---|---|
 | Kode PHP (`app/`, `routes/`, `config/`, `database/`) | folder yang bersangkutan |
-| Blade (`resources/views/`) | `resources/views/` + `php artisan view:cache` |
-| CSS/JS (`resources/css`, `resources/js`) | **`build/` seluruhnya** (hapus dulu `build/` lama di server supaya aset basi tidak menumpuk) |
+| Blade (`resources/views/`) | `resources/views/` + `php artisan view:cache` — **dan `npm run build` + `build/`**, lihat jebakan Tailwind v4 di bagian 3 |
+| CSS/JS (`resources/css`, `resources/js`) | `npm run build`, lalu **`build/` seluruhnya** (hapus dulu `build/` lama di server supaya aset basi tidak menumpuk) |
 | `composer.json` / `composer.lock` | `vendor/` (atau `composer install --no-dev -o` lewat SSH) |
 | Ikon / PWA | `ikon/`, `manifest.webmanifest`, `sw.js` |
 
