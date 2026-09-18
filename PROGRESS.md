@@ -221,6 +221,53 @@ yang memegang tautan kelas. Peringatannya ada di form, bukan di dokumentasi —
 yang membaca dokumentasi hanya yang sudah curiga.
 
 
+**Penguncian tutup buku duduk di model, bukan di controller.** Trait
+`TerkunciTutupBuku` dipasang di `Payment` dan `Expense`, dan `PaymentAllocation`
+punya penjaganya sendiri yang mengambil tanggal dari pembayaran induknya.
+Alasannya sama dengan alasan global scope tenancy ada di model: pemeriksaan yang
+harus diingat setiap kali menulis controller baru adalah pemeriksaan yang cepat
+atau lambat akan terlupakan, dan kunci yang bisa terlupakan bukan kunci. Form
+Request hanya menyalin pesannya ke bawah kolom tanggal supaya enak dibaca —
+bukan di situ penolakannya terjadi.
+
+**Alokasi dikunci pada ubah & hapus, sengaja TIDAK pada simpan baru.**
+Pembayaran baru bertanggal hari ini boleh melunasi tagihan periode yang sudah
+ditutup: itu menambah catatan, bukan mengubah sejarah, dan uang masuknya sendiri
+jatuh di luar rentang tertutup. Kalau simpan baru ikut dikunci, tunggakan
+periode tertutup mustahil dilunasi selamanya — diuji di
+`test_alokasi_deposit_dari_pembayaran_baru_tetap_boleh_berjalan`.
+
+**Mengubah tanggal transaksi ke luar rentang tertutup juga ditolak.** Baris yang
+duduk di periode tertutup tidak boleh disentuh sama sekali, termasuk dipindahkan
+keluar — kalau boleh, saldo periode yang sudah ditandatangani berubah lewat
+pintu belakang.
+
+**Angka `book_closings` disimpan, satu-satunya di aplikasi ini yang begitu.**
+Seluruh angka lain selalu dihitung ulang. Snapshot dibekukan karena laporan
+serah terima yang sudah ditandatangani harus tetap mencetak angka yang
+ditandatangani waktu itu, bukan angka yang ikut bergerak tiap ada transaksi baru.
+`saldo_awal` dihitung dari seluruh mutasi sebelum rentang, BUKAN diwarisi dari
+closing sebelumnya — kalau diwarisi, satu closing keliru menular ke semua
+closing sesudahnya.
+
+**Hanya closing terakhir yang bisa dibuka kembali.** Membuka yang di tengah
+membuat `saldo_awal` seluruh closing sesudahnya tidak lagi benar. Pembukaan
+menghapus baris closing-nya, tapi jejaknya disalin lebih dulu ke `audit_logs`
+dengan aksi `reopen_book` beserta pelakunya.
+
+**Aksi audit memakai nama yang sudah dicadangkan `schema.sql`** —
+`close_book`, `reopen_book`, `transfer_owner`. Kolom `audit_logs.aksi` adalah
+ENUM, jadi nama karangan ditolak database. Tidak ada migrasi baru untuk ini;
+nilainya memang sudah disiapkan sejak v1.
+
+**Serah terima mencabut akses bendahara lama di transaksi yang sama.** Kalau dia
+masih memegang kelas lain, dia diarahkan ke dashboard; kalau tidak, sesinya
+diakhiri. Membiarkannya tetap bisa masuk "sebentar dulu" adalah cara paling umum
+sebuah serah terima tidak pernah benar-benar selesai. Akun tidak pernah dipakai
+bergantian — begitu satu akun dipakai berdua, audit log berhenti bisa menjawab
+siapa yang mencatat apa.
+
+
 **Akun uji lokal** (dari `php artisan db:seed`):
 `bendahara@kaskelas.test` / `RahasiaKuat123` — kelas XII TRPL 1, SMKN 1 Subang.
 Kelas kedua (`bendahara-b@kaskelas.test`) sengaja ada supaya test isolasi punya

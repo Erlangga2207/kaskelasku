@@ -3,12 +3,14 @@
 use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\BillController;
+use App\Http\Controllers\BookClosingController;
 use App\Http\Controllers\CampaignController;
 use App\Http\Controllers\ExpenseCategoryController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\ClassroomQrisController;
 use App\Http\Controllers\ClassroomSettingController;
+use App\Http\Controllers\ClassroomTransferController;
 use App\Http\Controllers\ClassroomTokenController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PeriodController;
@@ -88,6 +90,17 @@ Route::middleware(['auth', 'kelas'])->group(function () {
 
     // --- Pengingat tunggakan (teks siap salin, tanpa pengiriman otomatis) ---
     Route::get('/pengingat', [ReminderController::class, 'index'])->name('pengingat.index');
+
+    // --- Tutup buku & serah terima (v1.2) ---
+    Route::get('/tutup-buku', [BookClosingController::class, 'index'])->name('tutup-buku.index');
+    Route::post('/tutup-buku', [BookClosingController::class, 'store'])->name('tutup-buku.store');
+    Route::get('/tutup-buku/{closing}/serah-terima', [BookClosingController::class, 'serahTerima'])
+        ->name('tutup-buku.serah-terima');
+    // Membuka kembali tutup buku terakhir. Service yang memastikan hanya yang
+    // terakhir bisa dibuka — bukan route ini, dan bukan tombol di Blade.
+    Route::delete('/tutup-buku/{closing}', [BookClosingController::class, 'destroy'])->name('tutup-buku.destroy');
+    Route::post('/tutup-buku/alih-kepemilikan', [ClassroomTransferController::class, 'store'])
+        ->name('tutup-buku.transfer');
 
     // --- Pengaturan kelas ---
     Route::get('/pengaturan', [ClassroomSettingController::class, 'edit'])->name('pengaturan.edit');

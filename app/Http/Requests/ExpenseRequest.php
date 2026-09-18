@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Models\BookClosing;
 use App\Models\Campaign;
 use App\Models\Expense;
 use App\Services\KasService;
@@ -62,6 +63,25 @@ class ExpenseRequest extends FormRequest
     public function after(): array
     {
         return [
+            // Penguncian tutup buku. Dua tanggal yang diperiksa saat mengubah:
+            // tanggal BARU (tidak boleh masuk periode tertutup) dan tanggal LAMA
+            // (baris yang duduk di periode tertutup tidak boleh disentuh sama
+            // sekali, termasuk dipindahkan keluar dari sana).
+            function (Validator $validator) {
+                $lama = $this->route('pengeluaran');
+                $asal = $lama ? Expense::find($lama)?->tanggal : null;
+
+                foreach ([$asal, $this->input('tanggal')] as $tanggal) {
+                    if ($closing = BookClosing::penguncian($tanggal)) {
+                        $validator->errors()->add(
+                            'tanggal',
+                            $closing->pesanPenolakan($lama ? 'mengubah pengeluaran ini' : 'mencatat pengeluaran ini')
+                        );
+
+                        return;
+                    }
+                }
+            },
             function (Validator $validator) {
                 if ($validator->errors()->has('jumlah') || $validator->errors()->has('campaign_id')) {
                     return;

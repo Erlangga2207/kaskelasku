@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\PeriodeTerkunciException;
 use App\Http\Requests\ExpenseRequest;
 use App\Models\Campaign;
 use App\Models\Expense;
@@ -136,7 +137,11 @@ class ExpenseController extends Controller
 
         // Soft delete: berkas bukti sengaja tidak ikut dihapus supaya jejaknya
         // masih bisa ditelusuri lewat audit log bila terjadi sengketa.
-        $expense->delete();
+        try {
+            $expense->delete();
+        } catch (PeriodeTerkunciException $e) {
+            return back()->with('galat', $e->getMessage());
+        }
 
         return redirect()->route('pengeluaran.index')->with('sukses', "Pengeluaran {$jumlah} dihapus.");
     }

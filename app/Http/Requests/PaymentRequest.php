@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Models\BookClosing;
 use App\Support\CurrentClassroom;
 use App\Support\Uang;
 use Illuminate\Contracts\Validation\Validator;
@@ -54,6 +55,15 @@ class PaymentRequest extends FormRequest
     public function after(): array
     {
         return [
+            // Penguncian tutup buku. Penolakan yang sebenarnya terjadi di model
+            // (trait TerkunciTutupBuku) dan tidak bisa dilewati lewat jalur mana
+            // pun; yang dikerjakan di sini hanya memindahkan pesannya ke bawah
+            // kolom tanggal, tempat bendahara bisa langsung memperbaikinya.
+            function (Validator $validator) {
+                if ($closing = BookClosing::penguncian($this->input('tanggal'))) {
+                    $validator->errors()->add('tanggal', $closing->pesanPenolakan('mencatat pembayaran ini'));
+                }
+            },
             function (Validator $validator) {
                 if ($this->input('mode_alokasi') !== 'manual') {
                     return;

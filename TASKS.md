@@ -144,12 +144,14 @@ saldo tidak pernah tampil basi setelah ada transaksi baru.
 
 ## Fase 9 — v1.2: Tutup Buku & Serah Terima
 
-- [ ] Migration `book_closings`
-- [ ] Proses tutup buku: hitung ringkasan, simpan snapshot
-- [ ] Validasi server: transaksi dalam rentang tertutup ditolak saat edit/hapus
-- [ ] Buka kembali tutup buku terakhir (tercatat di audit log)
-- [ ] PDF laporan serah terima + kolom tanda tangan
-- [ ] Undang bendahara baru & alihkan kepemilikan kelas
+- [x] Migration `book_closings`
+- [x] Proses tutup buku: hitung ringkasan, simpan snapshot
+- [x] Validasi server: transaksi dalam rentang tertutup ditolak saat edit/hapus
+- [x] Buka kembali tutup buku terakhir (tercatat di audit log)
+- [x] PDF laporan serah terima + kolom tanda tangan
+- [x] Undang bendahara baru & alihkan kepemilikan kelas
+
+**Belum dikerjakan:** deploy. Semua masih di branch `feat/fase-9-tutup-buku`.
 
 ---
 

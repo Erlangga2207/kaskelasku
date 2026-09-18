@@ -16,6 +16,7 @@
         ['route' => 'periode.index', 'label' => 'Periode', 'ikon' => 'periode', 'utama' => false],
         ['route' => 'campaign.index', 'label' => 'Iuran insidental', 'ikon' => 'dompet', 'utama' => false],
         ['route' => 'pengingat.index', 'label' => 'Pengingat', 'ikon' => 'surat', 'utama' => false],
+        ['route' => 'tutup-buku.index', 'label' => 'Tutup buku', 'ikon' => 'kunci', 'utama' => false],
         ['route' => 'audit.index', 'label' => 'Audit', 'ikon' => 'audit', 'utama' => false],
         ['route' => 'pengaturan.edit', 'label' => 'Pengaturan', 'ikon' => 'pengaturan', 'utama' => false],
     ])->filter(fn ($m) => Route::has($m['route']));

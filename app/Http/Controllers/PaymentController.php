@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\PeriodeTerkunciException;
 use App\Http\Requests\PaymentRequest;
 use App\Models\Bill;
 use App\Models\Payment;
@@ -127,7 +128,13 @@ class PaymentController extends Controller
         $nama = $payment->student->nama;
         $jumlah = Uang::format($payment->jumlah);
 
-        $this->kas->hapusPembayaran($payment);
+        // Penolakannya datang dari model, bukan dari sini — controller hanya
+        // menerjemahkannya jadi pesan, bukan jadi halaman galat 500.
+        try {
+            $this->kas->hapusPembayaran($payment);
+        } catch (PeriodeTerkunciException $e) {
+            return back()->with('galat', $e->getMessage());
+        }
 
         return redirect()->route('pembayaran.index')->with(
             'sukses',

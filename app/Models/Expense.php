@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToClassroom;
+use App\Models\Concerns\TerkunciTutupBuku;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -10,7 +11,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 /** Pengeluaran kas kelas. */
 class Expense extends Model
 {
-    use BelongsToClassroom, SoftDeletes;
+    use BelongsToClassroom, SoftDeletes, TerkunciTutupBuku;
 
     protected $fillable = ['tanggal', 'category_id', 'campaign_id', 'jumlah', 'keterangan'];
 
@@ -28,6 +29,27 @@ class Expense extends Model
         static::creating(function (self $model) {
             $model->created_by ??= auth()->id();
         });
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Penguncian tutup buku
+    |--------------------------------------------------------------------------
+    */
+
+    public function aksiSimpan(): string
+    {
+        return 'mencatat pengeluaran ini';
+    }
+
+    public function aksiUbah(): string
+    {
+        return 'mengubah pengeluaran ini';
+    }
+
+    public function aksiHapus(): string
+    {
+        return 'menghapus pengeluaran ini';
     }
 
     public function category(): BelongsTo
