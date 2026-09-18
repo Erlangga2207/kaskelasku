@@ -576,7 +576,12 @@ class PengingatQrisTest extends TestCase
 
     public function test_pengingat_dan_qris_butuh_login(): void
     {
-        [, $user] = $this->buatKelas();
+        [$kelas, $user] = $this->buatKelas();
+
+        // Pengingat ada di balik middleware 'siap'; yang diuji di sini gerbang
+        // login, jadi penyiapan kelasnya dibereskan dulu.
+        $this->buatSiswa($kelas, 'Adinda');
+        $this->buatPeriode($kelas);
 
         $this->get(route('pengingat.index'))->assertRedirect(route('login'));
         $this->patch(route('pengaturan.pengingat'), ['template_pengingat' => '{total}'])

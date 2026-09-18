@@ -112,6 +112,12 @@ class IsolasiCampaignTest extends TestCase
         [$kelasA, $userA] = $this->buatKelas('XII TRPL 1');
         [$kelasB, $userB] = $this->buatKelas('XI IPA 3', 'SMAN 2 Bandung');
 
+        // Kelas A harus lolos middleware 'siap' dulu, supaya yang diuji di bawah
+        // benar-benar penolakan campaign_id milik kelas lain — bukan pantulan
+        // wizard yang kebetulan juga berupa redirect.
+        $this->buatSiswa($kelasA, 'Adinda Kelas A');
+        $this->buatPeriode($kelasA);
+
         $campaignB = $this->buatCampaign($userB, $kelasB, 'Studi Tour Kelas B');
         $kategori = $this->dalamKelas($kelasA, fn () => ExpenseCategory::orderBy('id')->firstOrFail());
 

@@ -155,17 +155,34 @@ class GenerateTagihanTest extends TestCase
             ->assertSee('belum punya siswa aktif', false);
     }
 
+    /**
+     * Sejak v2.0 pantulannya bukan lagi ke daftar periode, melainkan ke langkah
+     * wizard yang belum beres — halaman yang memang ditulis untuk menjelaskan
+     * kenapa langkah ini tidak boleh dilewati. Middleware 'siap' yang menjaganya,
+     * jadi mengetik URL-nya langsung pun tetap terpantul.
+     */
     public function test_menu_bayar_tanpa_periode_diarahkan_membuat_periode_dulu(): void
     {
         [$kelas, $user] = $this->buatKelas();
         $this->buatSiswa($kelas, 'Adinda');
 
+        // followingRedirects: yang diuji bukan cuma tujuan pantulannya, tapi juga
+        // bahwa halaman tujuan benar-benar menjelaskan kenapa langkah ini tidak
+        // boleh dilewati — termasuk pesan peringatan yang dititipkan middleware.
         $this->actingAs($user)->get(route('pembayaran.create'))
-            ->assertRedirect(route('periode.index'))
+            ->assertRedirect(route('wizard.periode'))
             ->assertSessionHas('peringatan');
 
-        $this->actingAs($user)->get(route('periode.index'))
-            ->assertSee('belum punya periode iuran', false);
+        $this->followingRedirects()
+            ->actingAs($user)
+            ->get(route('pembayaran.create'))
+            ->assertOk()
+            ->assertSee('belum punya periode iuran', false)
+            ->assertSee('tidak ada tagihan yang terbentuk', false);
+
+        // Halaman daftar periode tetap boleh dibuka — di sanalah penyiapannya
+        // diselesaikan, jadi ia sengaja tidak ikut digerbang.
+        $this->actingAs($user)->get(route('periode.index'))->assertOk();
     }
 
     public function test_menu_bayar_terbuka_normal_begitu_periode_ada(): void

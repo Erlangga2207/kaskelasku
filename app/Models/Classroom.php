@@ -35,6 +35,8 @@ class Classroom extends Model
             'grace_days' => 'integer',
             'token_rotated_at' => 'datetime',
             'persetujuan_data_at' => 'datetime',
+            'dihapus_pada' => 'datetime',
+            'is_demo' => 'boolean',
         ];
     }
 
@@ -60,6 +62,70 @@ class Classroom extends Model
     public function punyaQris(): bool
     {
         return $this->qris_path !== null;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Kesiapan pakai (wizard v2.0)
+    |--------------------------------------------------------------------------
+    | Urutannya WAJIB: kelas → siswa → periode. Bukan sekadar saran tampilan.
+    |
+    | Tanpa periode, tidak ada tagihan; tanpa tagihan, setiap pembayaran yang
+    | dicatat mendarat sebagai deposit menggantung dan seluruh laporan tetap
+    | menunjukkan nol. Bendahara yang mengalaminya tidak melihat pesan galat apa
+    | pun — dia hanya melihat angka yang salah, berminggu-minggu kemudian.
+    | Karena itu urutan ini dipaksa di server, bukan cuma diarahkan lewat menu.
+    */
+
+    public function punyaSiswa(): bool
+    {
+        return $this->students()->exists();
+    }
+
+    /** Periode libur tidak menerbitkan tagihan, jadi tidak dihitung sebagai siap. */
+    public function punyaPeriode(): bool
+    {
+        return $this->periods()->where('is_libur', false)->exists();
+    }
+
+    /**
+     * Ada sesuatu di kelas ini yang bisa menerbitkan tagihan.
+     *
+     * Yang sebenarnya berbahaya bukan "tidak ada periode", melainkan "tidak ada
+     * tagihan sama sekali" — itulah yang membuat pembayaran mendarat sebagai
+     * deposit menggantung. Iuran insidental juga menerbitkan tagihan, jadi kelas
+     * yang sudah punya campaign hidup tidak perlu dipantulkan lagi ke wizard.
+     */
+    public function punyaSumberTagihan(): bool
+    {
+        return $this->punyaPeriode()
+            || $this->campaigns()->whereIn('status', ['aktif', 'selesai'])->exists();
+    }
+
+    public function setupSelesai(): bool
+    {
+        return $this->punyaSiswa() && $this->punyaSumberTagihan();
+    }
+
+    /** Nama route langkah wizard yang masih harus diselesaikan, atau null bila beres. */
+    public function langkahWizardBerikutnya(): ?string
+    {
+        return match (true) {
+            ! $this->punyaSiswa() => 'wizard.siswa',
+            ! $this->punyaSumberTagihan() => 'wizard.periode',
+            default => null,
+        };
+    }
+
+    public function sedangDihapus(): bool
+    {
+        return $this->status === 'dihapus';
+    }
+
+    /** Kelas demo: boleh dilihat siapa saja, tapi tidak boleh ditulis. */
+    public function isDemo(): bool
+    {
+        return (bool) $this->is_demo;
     }
 
     public function owner(): BelongsTo

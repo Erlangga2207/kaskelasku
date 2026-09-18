@@ -84,6 +84,7 @@ class TransaksiHttpTest extends TestCase
 
         [$kelas, $user] = $this->buatKelas();
         $siswa = $this->buatSiswa($kelas, 'Adinda');
+        $this->buatPeriode($kelas);
 
         $this->actingAs($user)->post(route('pembayaran.store'), [
             'student_id' => $siswa->id,
@@ -104,9 +105,16 @@ class TransaksiHttpTest extends TestCase
     {
         Storage::fake('local');
 
-        [, $userA] = $this->buatKelas('XII TRPL 1', 'SMKN 1 Subang');
+        [$kelasA, $userA] = $this->buatKelas('XII TRPL 1', 'SMKN 1 Subang');
         [$kelasB, $userB] = $this->buatKelas('XI IPA 3', 'SMAN 2 Bandung');
         $siswaB = $this->buatSiswa($kelasB, 'Fajar');
+
+        // Kedua kelas disiapkan penuh: route /pembayaran/... ada di balik
+        // middleware 'siap', dan yang harus diuji di sini adalah 404 karena
+        // isolasi tenant -- bukan 302 karena wizard belum selesai.
+        $this->buatSiswa($kelasA, 'Adinda');
+        $this->buatPeriode($kelasA);
+        $this->buatPeriode($kelasB);
 
         $this->actingAs($userB)->post(route('pembayaran.store'), [
             'student_id' => $siswaB->id,
@@ -128,6 +136,7 @@ class TransaksiHttpTest extends TestCase
 
         [$kelas, $user] = $this->buatKelas();
         $siswa = $this->buatSiswa($kelas, 'Adinda');
+        $this->buatPeriode($kelas);
 
         // Berkas skrip yang menyamar sebagai unggahan biasa: ditolak baik oleh
         // aturan ekstensi (mimes) maupun aturan jenis isi (mimetypes).
@@ -148,6 +157,7 @@ class TransaksiHttpTest extends TestCase
     {
         [$kelas, $user] = $this->buatKelas();
         $siswa = $this->buatSiswa($kelas, 'Adinda');
+        $this->buatPeriode($kelas, '2026-02-01', 5000, '2026-02-28');
 
         $this->actingAs($user)->post(route('pembayaran.store'), [
             'student_id' => $siswa->id, 'tanggal' => '2026-02-05', 'jumlah' => 10000, 'metode' => 'tunai',
@@ -208,6 +218,11 @@ class TransaksiHttpTest extends TestCase
 
         $siswaB = $this->buatSiswa($kelasB, 'Fajar Kelas B');
 
+        // Kelas A juga disiapkan penuh, supaya penolakan yang diuji di bawah
+        // benar-benar 404 isolasi tenant dan bukan pantulan wizard.
+        $this->buatSiswa($kelasA, 'Adinda Kelas A');
+        $this->buatPeriode($kelasA);
+
         $this->actingAs($userB)->post(route('periode.store'), [
             'tgl_mulai' => '2026-01-01', 'nominal' => 5000, 'sampai' => '2026-01-31',
         ]);
@@ -246,10 +261,13 @@ class TransaksiHttpTest extends TestCase
 
     public function test_pembayaran_untuk_siswa_kelas_lain_ditolak_validasi(): void
     {
-        [, $userA] = $this->buatKelas('XII TRPL 1', 'SMKN 1 Subang');
+        [$kelasA, $userA] = $this->buatKelas('XII TRPL 1', 'SMKN 1 Subang');
         [$kelasB] = $this->buatKelas('XI IPA 3', 'SMAN 2 Bandung');
 
         $siswaB = $this->buatSiswa($kelasB, 'Fajar Kelas B');
+
+        $this->buatSiswa($kelasA, 'Adinda Kelas A');
+        $this->buatPeriode($kelasA);
 
         $this->actingAs($userA)->post(route('pembayaran.store'), [
             'student_id' => $siswaB->id,

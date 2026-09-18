@@ -207,13 +207,25 @@ class IuranInsidentalTest extends TestCase
         [$kelas, $user] = $this->buatKelas();
         $siswa = $this->tambahSiswa($user, $kelas, ['Adinda Ayu'])->first();
 
+        // Satu periode iuran rutin bulan berjalan. Sejak v2.0 menu Bayar memang
+        // tidak bisa dibuka sebelum ada sumber tagihan, jadi deposit yang diuji
+        // di sini lahir dari kelebihan bayar iuran rutin -- persis seperti di
+        // kelas sungguhan, dan bukan dari pembayaran tanpa tagihan sama sekali.
+        $this->buatPeriode(
+            $kelas,
+            now()->startOfMonth()->toDateString(),
+            5000,
+            now()->endOfMonth()->toDateString(),
+        );
+
         $this->actingAs($user)->post(route('pembayaran.store'), [
             'student_id' => $siswa->id,
             'tanggal' => now()->toDateString(),
-            'jumlah' => 20000,
+            'jumlah' => 25000,
             'metode' => 'tunai',
         ]);
 
+        // Rp25.000 masuk, Rp5.000 menutup iuran bulan ini, Rp20.000 jadi deposit.
         $kas = app(KasService::class);
         $this->dalamKelas($kelas, fn () => $this->assertSame(2000000, $kas->depositSiswa($siswa)));
 

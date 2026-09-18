@@ -18,6 +18,7 @@
         ['route' => 'pengingat.index', 'label' => 'Pengingat', 'ikon' => 'surat', 'utama' => false],
         ['route' => 'tutup-buku.index', 'label' => 'Tutup buku', 'ikon' => 'kunci', 'utama' => false],
         ['route' => 'audit.index', 'label' => 'Audit', 'ikon' => 'audit', 'utama' => false],
+        ['route' => 'ekspor.index', 'label' => 'Ekspor data', 'ikon' => 'unduh', 'utama' => false],
         ['route' => 'pengaturan.edit', 'label' => 'Pengaturan', 'ikon' => 'pengaturan', 'utama' => false],
     ])->filter(fn ($m) => Route::has($m['route']));
 
@@ -25,6 +26,13 @@
         || request()->routeIs($route);
 
     $menuUtama = $menu->where('utama', true);
+
+    // Pemilih kelas aktif hanya masuk akal kalau akunnya memang memegang lebih
+    // dari satu kelas. Untuk satu kelas, dropdown-nya cuma jadi hiasan.
+    $kelasSaya = auth()->user()?->classrooms()
+        ->where('classrooms.status', 'aktif')
+        ->orderBy('classrooms.nama_kelas')
+        ->get() ?? collect();
 
     // Kelas grid ditulis utuh, bukan dirangkai string — Tailwind memindai berkas
     // sumber apa adanya, jadi nama kelas hasil interpolasi tidak akan dibuatkan CSS.
@@ -99,6 +107,41 @@
                                 <p class="truncate font-semibold">{{ auth()->user()->nama }}</p>
                                 <p class="truncate text-sm text-ink-faint">{{ auth()->user()->email }}</p>
                             </div>
+
+                            {{--
+                                Pemilih kelas aktif. Kelas yang dipilih disimpan ke
+                                SESSION lewat POST, tidak pernah ditempel di URL —
+                                id kelas di URL berarti siapa pun bisa mencoba
+                                menggantinya dengan id milik orang lain.
+                            --}}
+                            @if ($kelasSaya->count() > 1)
+                                <form method="POST" action="{{ route('kelas.pilih') }}"
+                                      class="border-b border-line px-4 py-3">
+                                    @csrf
+                                    <label for="pilih-kelas" class="block text-xs font-semibold text-ink-faint">
+                                        Kelas aktif
+                                    </label>
+                                    <select id="pilih-kelas" name="classroom_id"
+                                            onchange="this.form.submit()"
+                                            class="mt-1.5 block w-full rounded-lg border border-line-strong bg-card px-2.5 py-2 text-sm text-ink">
+                                        @foreach ($kelasSaya as $pilihan)
+                                            <option value="{{ $pilihan->id }}" @selected($kelas?->id === $pilihan->id)>
+                                                {{ $pilihan->nama_kelas }}
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                    <noscript>
+                                        <button type="submit" class="mt-2 text-sm font-semibold text-brand">Pindah</button>
+                                    </noscript>
+                                </form>
+                            @endif
+
+                            @if (auth()->user()->isAdminPlatform())
+                                <a href="{{ route('admin.index') }}" role="menuitem"
+                                   class="flex min-h-11 items-center gap-3 px-4 text-[0.9375rem] text-ink-soft transition-colors hover:bg-surface hover:text-ink">
+                                    <x-icon name="laporan" class="size-5" />Admin platform
+                                </a>
+                            @endif
 
                             @foreach ($menu->where('utama', false) as $item)
                                 <a href="{{ route($item['route']) }}" role="menuitem"

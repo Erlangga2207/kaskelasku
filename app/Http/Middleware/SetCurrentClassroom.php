@@ -26,7 +26,12 @@ class SetCurrentClassroom
             ?? $this->kelasPertama($user);
 
         if ($classroom === null) {
-            abort(403, 'Akun ini belum terhubung ke kelas mana pun.');
+            // Sejak v2.0 akun bisa ada lebih dulu daripada kelasnya — orang yang
+            // baru mendaftar, atau yang baru menyerahkan kelas terakhirnya.
+            // Mengarahkannya membuat kelas jauh lebih berguna daripada 403.
+            return $user->hasVerifiedEmail()
+                ? redirect()->route('wizard.kelas')
+                : redirect()->route('verifikasi.notice');
         }
 
         $request->session()->put(self::SESSION_KEY, $classroom->id);

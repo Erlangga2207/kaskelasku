@@ -1,7 +1,9 @@
 <?php
 
+use App\Http\Middleware\PastikanSetupSelesai;
 use App\Http\Middleware\ResolveClassroomFromToken;
 use App\Http\Middleware\SetCurrentClassroom;
+use Illuminate\Auth\Middleware\EnsureEmailIsVerified;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -16,6 +18,13 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'kelas' => SetCurrentClassroom::class,
             'kelas.token' => ResolveClassroomFromToken::class,
+            'siap' => PastikanSetupSelesai::class,
+
+            // Middleware bawaan Laravel memantulkan ke route bernama
+            // 'verification.notice'. Nama route di project ini berbahasa
+            // Indonesia, jadi tujuannya dioper sebagai parameter alias --
+            // lebih jujur daripada menamai satu route dengan dua bahasa.
+            'verified' => EnsureEmailIsVerified::class.':verifikasi.notice',
         ]);
 
         $middleware->redirectGuestsTo(fn () => route('login'));

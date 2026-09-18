@@ -1,47 +1,129 @@
 <?php
 
+use App\Http\Controllers\AdminPlatformController;
 use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Auth\RegisterController;
+use App\Http\Controllers\Auth\VerifyEmailController;
 use App\Http\Controllers\BillController;
 use App\Http\Controllers\BookClosingController;
 use App\Http\Controllers\CampaignController;
 use App\Http\Controllers\ExpenseCategoryController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\ClassroomExportController;
+use App\Http\Controllers\ClassroomLifecycleController;
 use App\Http\Controllers\ClassroomQrisController;
+use App\Http\Controllers\ClassroomSwitchController;
 use App\Http\Controllers\ClassroomSettingController;
 use App\Http\Controllers\ClassroomTransferController;
 use App\Http\Controllers\ClassroomTokenController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DemoController;
 use App\Http\Controllers\PeriodController;
 use App\Http\Controllers\PublicClassController;
+use App\Http\Controllers\PublicPageController;
 use App\Http\Controllers\ReminderController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\StudentBulkController;
 use App\Http\Controllers\StudentController;
+use App\Http\Controllers\WaitingListController;
+use App\Http\Controllers\WizardController;
 use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
-| Route bendahara (butuh login + kelas aktif)
+| Halaman publik (boleh diindeks mesin pencari)
 |--------------------------------------------------------------------------
-| Landing page publik baru dibuat di v2.0, jadi akar situs untuk sementara
-| mengarahkan ke dashboard (atau ke halaman masuk bila belum login).
+| HANYA halaman di grup ini yang boleh masuk hasil pencarian. Dashboard dan
+| halaman kelas bertoken punya noindex di layout-nya masing-masing, dan juga
+| ditolak lewat robots.txt -- dua lapis, karena halaman kelas berisi nama siswa.
 */
 
-Route::redirect('/', '/dashboard');
+Route::get('/', [PublicPageController::class, 'beranda'])->name('beranda');
+Route::get('/panduan', [PublicPageController::class, 'panduan'])->name('panduan');
+Route::get('/privasi', [PublicPageController::class, 'privasi'])->name('privasi');
+Route::get('/syarat', [PublicPageController::class, 'syarat'])->name('syarat');
+Route::get('/sitemap.xml', [PublicPageController::class, 'sitemap'])->name('sitemap');
+Route::get('/robots.txt', [PublicPageController::class, 'robots'])->name('robots');
+Route::get('/demo', DemoController::class)->name('demo');
+
+// Daftar tunggu: menggantikan pendaftaran saat kuota se-sistem penuh.
+Route::get('/daftar-tunggu', [WaitingListController::class, 'create'])->name('daftar-tunggu');
+Route::post('/daftar-tunggu', [WaitingListController::class, 'store'])
+    ->middleware('throttle:10,60')
+    ->name('daftar-tunggu.store');
+
+/*
+|--------------------------------------------------------------------------
+| Masuk & daftar
+|--------------------------------------------------------------------------
+*/
 
 Route::middleware('guest')->group(function () {
     Route::get('/masuk', [LoginController::class, 'create'])->name('login');
     Route::post('/masuk', [LoginController::class, 'store'])->name('login.store');
+
+    Route::get('/daftar', [RegisterController::class, 'create'])->name('daftar');
+    // Rate limit pendaftaran: 5 percobaan per jam per IP. Tanpa ini satu skrip
+    // bisa menghabiskan seluruh kuota kelas dalam hitungan menit.
+    Route::post('/daftar', [RegisterController::class, 'store'])
+        ->middleware('throttle:5,60')
+        ->name('daftar.store');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Verifikasi email & wizard penyiapan (butuh login, belum butuh kelas)
+|--------------------------------------------------------------------------
+*/
+
+Route::middleware('auth')->group(function () {
+    Route::get('/verifikasi', [VerifyEmailController::class, 'notice'])->name('verifikasi.notice');
+    Route::get('/verifikasi/{id}/{hash}', [VerifyEmailController::class, 'verify'])
+        ->middleware(['signed', 'throttle:6,1'])
+        ->name('verification.verify');
+    // Kirim ulang dibatasi ketat: tiap percobaan mengirim email sungguhan lewat
+    // SMTP Hostinger, dan kuota SMTP yang habis membuat SEMUA pendaftar tertahan.
+    Route::post('/verifikasi/kirim-ulang', [VerifyEmailController::class, 'resend'])
+        ->middleware('throttle:3,10')
+        ->name('verifikasi.kirim-ulang');
+
+    // Wizard wajib lewat email terverifikasi -- kelas tidak boleh lahir dari
+    // alamat email yang belum terbukti bisa dihubungi.
+    Route::middleware('verified')->group(function () {
+        Route::get('/wizard/kelas', [WizardController::class, 'buatKelas'])->name('wizard.kelas');
+        Route::post('/wizard/kelas', [WizardController::class, 'simpanKelas'])->name('wizard.kelas.store');
+    });
+
+    Route::get('/kelas-terhapus', [ClassroomLifecycleController::class, 'terhapus'])->name('kelas.terhapus');
+    Route::patch('/kelas-terhapus/{kelas}/pulihkan', [ClassroomLifecycleController::class, 'restore'])
+        ->name('kelas.restore');
+
+    // Dashboard admin platform: agregat saja, tidak pernah detail transaksi.
+    Route::get('/admin', [AdminPlatformController::class, 'index'])->name('admin.index');
 });
 
 Route::post('/keluar', [LoginController::class, 'destroy'])
     ->middleware('auth')
     ->name('logout');
 
-Route::middleware(['auth', 'kelas'])->group(function () {
+Route::middleware(['auth', 'verified', 'kelas'])->group(function () {
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
+
+    // Pemilih kelas aktif. Hasilnya disimpan ke session, tidak pernah ke URL.
+    Route::post('/kelas-aktif', [ClassroomSwitchController::class, 'store'])->name('kelas.pilih');
+
+    // Langkah wizard yang butuh kelas aktif.
+    Route::get('/wizard/siswa', [WizardController::class, 'siswa'])->name('wizard.siswa');
+    Route::get('/wizard/periode', [WizardController::class, 'periode'])->name('wizard.periode');
+
+    // Ekspor data kelas -- jalan keluar yang dijanjikan Syarat Layanan.
+    Route::get('/ekspor', [ClassroomExportController::class, 'index'])->name('ekspor.index');
+    Route::get('/ekspor/{jenis}.csv', [ClassroomExportController::class, 'unduh'])->name('ekspor.unduh');
+
+    // Hapus kelas: bertenggang, tidak pernah langsung permanen.
+    Route::delete('/kelas', [ClassroomLifecycleController::class, 'destroy'])->name('kelas.destroy');
 
     // --- Data master siswa ---
     Route::get('/siswa/massal', [StudentBulkController::class, 'create'])->name('siswa.massal');
@@ -64,6 +146,21 @@ Route::middleware(['auth', 'kelas'])->group(function () {
     Route::patch('/campaign/{campaign}', [CampaignController::class, 'update'])->name('campaign.update');
     Route::patch('/campaign/{campaign}/status', [CampaignController::class, 'status'])->name('campaign.status');
     Route::delete('/campaign/{campaign}', [CampaignController::class, 'destroy'])->name('campaign.destroy');
+
+    /*
+    |----------------------------------------------------------------------
+    | Halaman yang menuntut penyiapan sudah selesai
+    |----------------------------------------------------------------------
+    | Middleware 'siap' memantulkan bendahara kembali ke langkah wizard yang
+    | belum beres. Siswa, Periode, dan Pengaturan sengaja TIDAK ikut digerbang
+    | -- justru di sanalah penyiapannya diselesaikan.
+    |
+    | Ini penegakan di server, bukan sekadar menyembunyikan menu: URL-nya masih
+    | bisa diketik langsung, dan mencatat pembayaran sebelum ada periode
+    | menghasilkan deposit menggantung yang membuat seluruh laporan nol tanpa
+    | satu pun pesan galat.
+    */
+    Route::middleware('siap')->group(function () {
 
     // --- Pembayaran ---
     Route::get('/pembayaran', [PaymentController::class, 'index'])->name('pembayaran.index');
@@ -101,6 +198,8 @@ Route::middleware(['auth', 'kelas'])->group(function () {
     Route::delete('/tutup-buku/{closing}', [BookClosingController::class, 'destroy'])->name('tutup-buku.destroy');
     Route::post('/tutup-buku/alih-kepemilikan', [ClassroomTransferController::class, 'store'])
         ->name('tutup-buku.transfer');
+
+    }); // akhir grup 'siap'
 
     // --- Pengaturan kelas ---
     Route::get('/pengaturan', [ClassroomSettingController::class, 'edit'])->name('pengaturan.edit');

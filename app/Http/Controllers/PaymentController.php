@@ -42,21 +42,14 @@ class PaymentController extends Controller
         ]);
     }
 
-    public function create(Request $request): View|RedirectResponse
+    public function create(Request $request): View
     {
-        // Tanpa periode tidak ada tagihan, sehingga setiap pembayaran mendarat
-        // sebagai deposit menggantung — uangnya masuk tapi rekap per periode
-        // tetap Rp 0. Bendahara diarahkan membuat periode dulu, bukan dibiarkan
-        // mencatat uang ke ruang kosong.
-        if (! $this->kelas()->periods()->where('is_libur', false)->exists()) {
-            return redirect()->route('periode.index')->with(
-                'peringatan',
-                'Kelas ini belum punya periode iuran, jadi belum ada tagihan yang bisa dibayar. '
-                    .'Buat periodenya dulu di halaman ini — pembayaran yang dicatat sekarang hanya akan '
-                    .'mengendap sebagai deposit dan tidak muncul di rekap per periode.'
-            );
-        }
-
+        // Penjagaan "belum ada sumber tagihan" pindah ke middleware 'siap' di
+        // v2.0. Bukan cuma karena rapi: penjagaan yang dulu ada di sini hanya
+        // menutup satu route, sedangkan URL /pembayaran, /pengeluaran, dan
+        // /laporan tetap bisa diketik langsung. Ia juga salah sejak ada iuran
+        // insidental — kelas yang punya campaign hidup memang sudah punya
+        // tagihan meski belum punya satu pun periode rutin.
         $siswa = $request->query('siswa')
             ? $this->kelas()->students()->find($request->query('siswa'))
             : null;

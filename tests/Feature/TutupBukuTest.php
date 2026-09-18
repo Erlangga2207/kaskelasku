@@ -421,7 +421,13 @@ class TutupBukuTest extends TestCase
     {
         // buatKelas() sengaja dipakai langsung: siapkan() melakukan actingAs,
         // dan sesi itu akan terbawa sehingga test ini berhenti menguji apa pun.
-        [, $user] = $this->buatKelas();
+        [$kelas, $user] = $this->buatKelas();
+
+        // Tutup buku ada di balik middleware 'siap'. Yang diuji di sini adalah
+        // gerbang login, jadi penyiapan kelasnya dibereskan dulu supaya
+        // kegagalan di baris terakhir benar-benar berarti auth, bukan wizard.
+        $this->buatSiswa($kelas, 'Adinda');
+        $this->buatPeriode($kelas);
 
         $this->get(route('tutup-buku.index'))->assertRedirect(route('login'));
         $this->post(route('tutup-buku.store'), ['label' => 'X'])->assertRedirect(route('login'));
@@ -456,9 +462,12 @@ class TutupBukuTest extends TestCase
         $this->assertFalse($lama->fresh()->classrooms()->where('classrooms.id', $kelas->id)->exists(),
             'Bendahara lama harus kehilangan akses.');
 
-        // Bendahara lama tidak punya kelas lain, jadi tidak boleh bisa masuk ke
-        // dashboard kelas mana pun.
-        $this->actingAs($lama)->get(route('dashboard'))->assertForbidden();
+        // Bendahara lama tidak punya kelas lain. Sampai v1.2 keadaan ini dijawab
+        // 403; sejak v2.0 akun boleh hidup tanpa kelas, jadi dia diantar ke
+        // wizard buat kelas. Yang penting tetap sama: tidak ada satu pun kelas
+        // yang terbuka untuknya.
+        $this->actingAs($lama)->get(route('dashboard'))
+            ->assertRedirect(route('wizard.kelas'));
 
         // Bendahara baru mendapat akses penuh.
         $this->actingAs($baru)->get(route('dashboard'))->assertOk();

@@ -92,6 +92,7 @@ class HalamanKelasPublikTest extends TestCase
 
         [$kelas, $user] = $this->buatKelas();
         $siswa = $this->buatSiswa($kelas, 'Adinda');
+        $this->buatPeriode($kelas);
 
         $this->actingAs($user)->post(route('pembayaran.store'), [
             'student_id' => $siswa->id,
@@ -210,6 +211,7 @@ class HalamanKelasPublikTest extends TestCase
     {
         [$kelas, $user] = $this->buatKelas();
         $siswa = $this->buatSiswa($kelas, 'Adinda');
+        $this->buatPeriode($kelas);
 
         $this->actingAs($user)->post(route('pembayaran.store'), [
             'student_id' => $siswa->id, 'tanggal' => '2026-01-10', 'jumlah' => 10000, 'metode' => 'tunai',

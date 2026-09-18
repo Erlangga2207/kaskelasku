@@ -78,16 +78,29 @@ class CurrentClassroom
         }
     }
 
-    /** Dipakai seeder & test untuk berpindah konteks kelas secara eksplisit. */
+    /**
+     * Dipakai seeder & test untuk berpindah konteks kelas secara eksplisit.
+     *
+     * Bypass ikut DIMATIKAN selama callback berjalan, dan itu penting. Tanpa
+     * itu, runFor() yang bersarang di dalam withoutTenancy() akan tampak
+     * berpindah kelas padahal global scope masih dilewati — baris baru lahir
+     * dengan classroom_id kosong, dan query-nya diam-diam melihat seluruh
+     * kelas. "Jalankan sebagai kelas X" dan "lewati batas kelas" adalah dua
+     * permintaan yang berlawanan; yang lebih spesifik yang menang.
+     */
     public static function runFor(Classroom $classroom, callable $callback): mixed
     {
-        $previous = static::$classroom;
+        $previousClassroom = static::$classroom;
+        $previousBypass = static::$bypass;
+
         static::$classroom = $classroom;
+        static::$bypass = false;
 
         try {
             return $callback();
         } finally {
-            static::$classroom = $previous;
+            static::$classroom = $previousClassroom;
+            static::$bypass = $previousBypass;
         }
     }
 }

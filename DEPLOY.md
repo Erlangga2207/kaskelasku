@@ -267,6 +267,95 @@ php artisan db:seed --force   # HANYA sekali; lalu ganti sandi bendahara bawaan
 
 ---
 
+## 8b. Tambahan v2.0 — SMTP, cron, dan kelas demo
+
+### SMTP Hostinger (WAJIB sebelum pendaftaran dibuka)
+
+Tanpa ini pendaftaran berhenti total: akun terbuat, email verifikasi tidak
+pernah sampai, dan kelas tidak bisa dibuat sama sekali. Buat mailbox di hPanel
+→ Email Accounts, lalu:
+
+```env
+MAIL_MAILER=smtp
+MAIL_HOST=smtp.hostinger.com
+MAIL_PORT=465
+MAIL_ENCRYPTION=ssl
+MAIL_USERNAME=noreply@kaskelasku.my.id
+MAIL_PASSWORD=<sandi mailbox>
+MAIL_FROM_ADDRESS=noreply@kaskelasku.my.id
+MAIL_FROM_NAME=KasKelas
+```
+
+Uji sekali sebelum mengumumkan apa pun ke siapa pun:
+
+```bash
+php artisan tinker --execute="Mail::raw('uji', fn(\$m) => \$m->to('emailmu@gmail.com')->subject('Uji SMTP'));"
+```
+
+Kalau email uji mendarat di folder spam, pasang SPF dan DKIM di hPanel → DNS
+Zone. Email verifikasi yang selalu masuk spam sama saja dengan tidak terkirim —
+dan pendaftar tidak punya cara lain masuk.
+
+### Batas kapasitas (opsional, bisa diubah tanpa deploy ulang)
+
+```env
+KASKELAS_BATAS_KELAS_SISTEM=100
+KASKELAS_BATAS_KELAS_AKUN=5
+KASKELAS_BATAS_SISWA=60
+KASKELAS_TENGGANG_HAPUS=30
+KASKELAS_NONAKTIF_BULAN=12
+KASKELAS_DEMO_AKTIF=true
+```
+
+Menaikkan batas cukup mengubah `.env` lalu `php artisan config:cache`. Angkanya
+sengaja tidak ditulis di kode: saat kuota penuh justru saat paling mendesak
+untuk menaikkannya, dan menunggu jendela deploy bukan pilihan.
+
+### Cron (WAJIB)
+
+Dua pekerjaan perawatan bergantung pada ini: menghapus permanen kelas yang
+tenggang 30 harinya sudah lewat, dan membangun ulang kelas demo. Tanpa cron,
+kelas yang dihapus tidak pernah benar-benar hilang, dan angka demo makin
+melenceng tiap hari.
+
+hPanel → Advanced → Cron Jobs, jadwal **setiap menit**:
+
+```
+* * * * * cd /home/<user>/public_html && /usr/bin/php artisan schedule:run >> /dev/null 2>&1
+```
+
+Satu cron ini sudah cukup untuk seluruh jadwal; yang menentukan jam berapa tiap
+pekerjaan berjalan adalah `routes/console.php`, bukan hPanel. Pastikan jalur
+`php`-nya benar (`which php` lewat SSH) — kalau salah, cron akan diam tanpa satu
+pun pesan kesalahan.
+
+Periksa jadwalnya terbaca:
+
+```bash
+php artisan schedule:list
+```
+
+### Kelas demo
+
+```bash
+php artisan kaskelas:reset-demo
+```
+
+Dijalankan sekali saat deploy; setelah itu cron yang merawatnya tiap dini hari.
+Datanya fiktif seluruhnya — jangan pernah menggantinya dengan data kelas nyata,
+karena halaman demo bisa dibuka siapa saja tanpa login.
+
+### Akun admin platform
+
+Dashboard `/admin` hanya bisa dibuka akun ber-`role = admin_platform`, dan
+perannya sengaja tidak bisa diberikan lewat UI mana pun:
+
+```bash
+php artisan tinker --execute="App\Models\User::where('email','emailmu@gmail.com')->first()->forceFill(['role'=>'admin_platform'])->save();"
+```
+
+---
+
 ## 9. Paksa HTTPS
 
 Aktifkan "Force HTTPS" di hPanel. Kalau tidak tersedia, tambahkan di
@@ -293,6 +382,26 @@ curl -sI $H/ikon/ikon-192.png                     # 200
 curl -sI $H/.env                                  # 403
 curl -sI $H/vendor/autoload.php                   # 403
 ```
+Tambahan v2.0:
+
+```bash
+curl -s  $H/robots.txt | head                     # memuat Disallow: /kelas/
+curl -sI $H/sitemap.xml                           # 200, application/xml
+curl -sI $H/panduan                               # 200
+curl -sI $H/privasi                               # 200
+curl -sI $H/syarat                                # 200
+curl -sI $H/demo                                  # 302 ke /kelas/<token>
+curl -s  $H/ -o /dev/null -w '%{time_total}\n'    # target di bawah 2 detik
+curl -s  $H/ | grep -c 'og:image'                 # 1 — pratinjau WhatsApp
+curl -sI $H/kelas/<token-kelas-nyata> | grep -i x-robots-tag   # noindex
+```
+
+Lalu tiga hal yang harus dicoba manual, karena inilah yang paling mudah luput:
+
+- [ ] Daftar akun baru, pastikan email verifikasinya benar-benar masuk (cek spam).
+- [ ] Tempel tautan beranda ke chat WhatsApp, pastikan pratinjaunya muncul.
+- [ ] Buka `/admin` dengan akun bendahara biasa → harus 403.
+
 
 Ambil `<hash>` dari `build/manifest.json` di lokal — kalau hash di situ tidak sama
 dengan yang diminta browser, artinya `build/` di server belum diunggah ulang.

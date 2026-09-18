@@ -29,11 +29,25 @@ class ClassroomTransferController extends Controller
         $data = $request->validated();
 
         $baru = DB::transaction(function () use ($request, $kelas, $lama, $data) {
-            $baru = $request->calon() ?? User::create([
-                'nama' => $data['nama'],
-                'email' => $data['email'],
-                'password' => $data['password'],
-            ]);
+            $baru = $request->calon();
+
+            if ($baru === null) {
+                $baru = User::create([
+                    'nama' => $data['nama'],
+                    'email' => $data['email'],
+                    'password' => $data['password'],
+                ]);
+
+                // Akun serah terima langsung dianggap terverifikasi. Pilihan ini
+                // sadar, dan biayanya diakui: alamat emailnya memang belum
+                // dibuktikan. Alternatifnya lebih buruk -- bendahara lama sudah
+                // dicabut aksesnya di transaksi yang sama, jadi kalau bendahara
+                // baru tertahan di halaman verifikasi dan emailnya ternyata
+                // salah ketik, kelas itu tidak punya satu pun orang yang bisa
+                // membukanya lagi. Yang menanggung alamat ini adalah bendahara
+                // lama, yang mengetiknya sambil berhadapan dengan penggantinya.
+                $baru->markEmailAsVerified();
+            }
 
             // syncWithoutDetaching: kalau bendahara baru sudah terhubung ke kelas
             // ini sebelumnya, barisnya tidak digandakan.

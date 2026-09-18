@@ -304,5 +304,55 @@
                 Tidak menyimpan NIS, NISN, nomor HP, alamat, maupun foto siswa — dan tidak akan pernah.
             </li>
         </ul>
+
+        <div class="mt-4 rounded-xl border border-line-strong bg-surface p-4">
+            <p class="text-sm font-semibold text-ink">Bawa datamu pulang kapan saja</p>
+            <p class="mt-1 text-sm text-ink-soft">
+                Seluruh data kelas bisa diunduh sebagai CSV, tanpa minta izin dan tanpa menunggu.
+            </p>
+            <div class="mt-3">
+                <x-ui.button :href="route('ekspor.index')" variant="secondary" size="sm" icon="unduh">
+                    Buka halaman Ekspor
+                </x-ui.button>
+            </div>
+        </div>
     </x-ui.card>
+
+    {{-- ================= Hapus kelas ================= --}}
+    @if ($kelas->owner_id === auth()->id())
+        <x-ui.card judul="Hapus kelas" id="hapus-kelas"
+                   keterangan="Aksi yang paling sulit ditarik kembali di aplikasi ini.">
+
+            <x-ui.alert tipe="galat" judul="Yang hilang bukan satu baris, tapi seluruh catatan kas kelas">
+                Menghapus kelas berarti menghapus semua siswa, tagihan, pembayaran, pengeluaran, dan
+                audit log-nya. Kelas akan masuk masa tenggang
+                <strong>{{ config('kaskelas.daur.tenggang_hapus_hari') }} hari</strong> — selama itu masih
+                bisa dipulihkan. Setelah lewat, datanya hilang permanen dan tidak bisa dikembalikan
+                oleh siapa pun.
+            </x-ui.alert>
+
+            <p class="mt-4 text-sm text-ink-soft">
+                Sebelum menghapus,
+                <a href="{{ route('ekspor.index') }}"
+                   class="font-semibold text-brand underline-offset-2 hover:underline">unduh dulu data kelasmu</a>.
+                Kalau yang kamu mau sebenarnya cuma berhenti jadi bendahara, pakai
+                <a href="{{ route('tutup-buku.index') }}#alih-kepemilikan"
+                   class="font-semibold text-brand underline-offset-2 hover:underline">Alih kepemilikan</a>
+                — kelasnya tetap hidup untuk bendahara berikutnya.
+            </p>
+
+            {{-- Mengetik nama kelas memaksa berhenti sejenak dan membaca ulang
+                 kelas MANA yang sedang dihapus: satu akun bisa memegang lima. --}}
+            <form method="POST" action="{{ route('kelas.destroy') }}" class="mt-4 space-y-3">
+                @csrf
+                @method('DELETE')
+
+                <x-ui.field label="Ketik nama kelas untuk mengonfirmasi" name="konfirmasi_nama"
+                            :placeholder="$kelas->nama_kelas"
+                            bantuan="Harus sama persis dengan nama kelas ini." />
+
+                <x-ui.button type="submit" variant="danger">Hapus kelas ini</x-ui.button>
+            </form>
+        </x-ui.card>
+    @endif
 </x-layouts.app>
