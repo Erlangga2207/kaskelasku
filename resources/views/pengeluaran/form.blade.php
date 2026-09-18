@@ -3,13 +3,16 @@
 
     $baru = ! $pengeluaran->exists;
     $batas = $saldoKas + ($baru ? 0 : Uang::keSen($pengeluaran->jumlah));
+    $batasBebas = max(0, $saldoBebas + ($baru ? 0 : Uang::keSen($pengeluaran->jumlah)));
 @endphp
 
 <x-layouts.app :judul="$baru ? 'Catat pengeluaran' : 'Ubah pengeluaran'">
     <x-ui.button :href="route('pengeluaran.index')" variant="ghost" icon="kiri" size="sm">Kembali ke daftar pengeluaran</x-ui.button>
 
     <x-ui.card :judul="$baru ? 'Pengeluaran baru' : 'Ubah pengeluaran'"
-               :keterangan="'Maksimal '.Uang::format(Uang::keDesimal($batas)).' — kas kelas tidak boleh minus.'">
+               :keterangan="$campaign === []
+                    ? 'Maksimal '.Uang::format(Uang::keDesimal($batas)).' — kas kelas tidak boleh minus.'
+                    : 'Maksimal '.Uang::format(Uang::keDesimal($batasBebas)).' dari saldo bebas. Pengeluaran yang ditandai campaign memakai sisa dana campaign itu.'">
 
         <form method="POST"
               action="{{ $baru ? route('pengeluaran.store') : route('pengeluaran.update', $pengeluaran) }}"
@@ -33,6 +36,13 @@
 
             <x-ui.select label="Kategori" name="category_id" wajib kosong="— pilih kategori —"
                          :value="$pengeluaran->category_id" :opsi="$kategori" />
+
+            @if ($campaign !== [])
+                <x-ui.select label="Dibiayai campaign (opsional)" name="campaign_id"
+                             kosong="— pakai saldo bebas kelas —"
+                             :value="$pengeluaran->campaign_id" :opsi="$campaign"
+                             bantuan="Pilih campaign bila uang ini berasal dari iuran insidental. Pengeluarannya lalu dibatasi sisa dana campaign tersebut, dan ikut muncul di laporan campaign." />
+            @endif
 
             <div class="space-y-1.5">
                 <label for="bukti" class="block text-sm font-semibold text-ink">Bukti / nota (opsional)</label>

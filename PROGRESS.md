@@ -1,20 +1,21 @@
 # PROGRESS — KasKelas v1
 
-Catatan posisi pengerjaan terhadap `TASKS.md`. Diperbarui 15 September 2026.
+Catatan posisi pengerjaan terhadap `TASKS.md`. Diperbarui 17 September 2026.
 
 ## STATUS SAAT INI
 
-**Fase 0–5 selesai. Kode v1 lengkap dan 77 test hijau.**
-Yang tersisa dari v1 adalah Fase 6, dan isinya hampir seluruhnya tindakan yang
-hanya bisa kamu lakukan sendiri: deploy ke Hostinger lalu memakainya sebulan
-penuh di kelasmu. Panduan langkahnya ada di `DEPLOY.md`.
+**Fase 0–5 selesai, dan Fase 7 (iuran insidental) selesai di kode.**
+Fase 6 — deploy ke Hostinger lalu memakainya sebulan penuh di kelasmu — masih
+terbuka, dan itu tetap tindakan yang hanya bisa kamu lakukan sendiri. Panduan
+langkahnya ada di `DEPLOY.md`.
 
-Jangan mulai Fase 7 (iuran insidental) sebelum itu. Urutan ini disengaja: fitur
-baru di atas produk yang belum pernah dipakai siapa pun hanya menambah hal yang
-harus dirawat.
+Fase 7 dikerjakan lebih dulu atas permintaan sendiri, di branch
+`feat/fase-7-iuran-insidental` dan belum di-deploy. Perlu diingat alasan urutan
+aslinya: fitur baru di atas produk yang belum dipakai siapa pun menambah hal yang
+harus dirawat, jadi sebaiknya v1 tetap yang lebih dulu naik ke produksi.
 
 ```
-php artisan test          # 77 test, 289 assertion — semua hijau
+php artisan test          # 125 test, 676 assertion — semua hijau (termasuk Fase 7)
 ```
 
 ---
@@ -106,6 +107,70 @@ Yang harus kamu kerjakan:
 
 ---
 
+## Fase 7 — v1.1: Iuran Insidental (branch `feat/fase-7-iuran-insidental`)
+
+Selesai di kode, **belum di-deploy**. `php artisan test` hijau seluruhnya.
+
+- [x] Migrasi terpisah `2026_02_01_000100_create_campaigns_table` — tabel `campaigns`,
+      FK `bills.campaign_id`, FK + index `expenses.campaign_id`. Migrasi v1 tidak
+      disentuh sama sekali karena kelas nyata sudah berisi data.
+- [x] CRUD campaign + pemilihan peserta (bawaan seluruh siswa aktif, bisa dikurangi)
+- [x] Tagihan campaign: `period_id` NULL, `campaign_id` terisi
+- [x] Mesin alokasi pembayaran **tidak diubah** — lihat catatan di bawah
+- [x] Satu pembayaran bisa dipecah ke campuran tagihan rutin dan campaign
+- [x] Dashboard & halaman pengeluaran memisahkan saldo bebas vs dana campaign
+- [x] Pengeluaran bisa ditandai milik campaign; laporan terkumpul/terpakai/sisa
+- [x] Campaign dibatalkan: tagihan ditarik, pembayaran utuh, sisanya jadi deposit
+- [x] Progres campaign tampil di halaman kelas publik
+- [x] Test alur nyata + test isolasi tenant modul campaign
+
+### Keputusan yang diambil di fase ini
+
+**Mesin alokasi benar-benar tidak berubah.** Yang ditambahkan ke `KasService`
+hanya bagian baru (penerbitan tagihan campaign + hitungan dananya). Lima method
+inti — `tagihanBelumLunas`, `alokasikanDeposit`, `alokasikanManual`,
+`batalkanAlokasi`, `hapusPembayaran` — tidak berubah satu baris pun. Akibatnya
+yang perlu diketahui: tagihan campaign (tanpa `jatuh_tempo` periode) selalu
+diurutkan paling belakang, jadi alokasi otomatis menutup tunggakan rutin dulu.
+Kalau uang yang diterima memang khusus untuk campaign, pakai alokasi manual di
+form pembayaran.
+
+**Jatuh tempo tagihan campaign = `campaigns.deadline`.** Dua filter pelaporan
+(`tunggakanSiswa` dan `daftarTunggakan`) sebelumnya menganggap setiap tagihan
+tanpa periode sudah jatuh tempo. Tanpa perubahan itu, membuat campaign akan
+langsung melonjakkan jumlah penunggak di dashboard walau batas waktunya masih
+sebulan lagi. Campaign tanpa deadline tidak pernah dihitung sebagai tunggakan.
+Denda tetap hanya berlaku untuk iuran rutin.
+
+**Saldo terbagi dua, dan pembagiannya dipaksakan server.** Pengeluaran bertanda
+campaign dibatasi sisa dana campaign itu; pengeluaran biasa dibatasi saldo bebas
+(kas − seluruh sisa dana campaign). Uang studi tour tidak bisa habis untuk beli
+spidol tanpa ada yang sadar.
+
+**Yang sengaja dikunci:**
+- Nominal per siswa tidak bisa diubah setelah campaign menerima pembayaran.
+- Peserta yang tagihannya sudah dibayar tidak bisa dikeluarkan dari campaign.
+- Campaign yang sudah punya pengeluaran tidak bisa dibatalkan (uangnya sudah tidak
+  ada di kas, jadi tidak bisa dikembalikan jadi deposit) — tandai selesai saja.
+- Campaign hanya bisa dihapus permanen selama belum tersentuh uang; selebihnya
+  dibatalkan, supaya jejaknya tetap ada di audit log.
+
+### Rehearsal migrasi
+
+Migrasi diuji di atas **salinan database lokal yang sudah berisi data v1**
+(95 tagihan, 3 pengeluaran): naik → turun → naik, semuanya bersih. CHECK
+constraint `chk_bills_sumber` tetap hidup setelah foreign key campaign dipasang,
+dan itu diuji langsung lewat test (insert dengan dua sumber sekaligus → ditolak
+database).
+
+Database lokal `kaskelas` **belum** dimigrasikan — jalankan sendiri:
+
+```
+php artisan migrate
+```
+
+---
+
 ## Catatan teknis yang perlu diingat
 
 **Uang.** Semua hitungan dilakukan dalam satuan sen (integer) lewat
@@ -128,6 +193,33 @@ dicatat sama sekali.
 
 **Service worker tidak pernah menyajikan halaman data dari cache** selama jaringan
 masih bisa dihubungi. Saldo basi lebih berbahaya daripada halaman gagal dimuat.
+
+**Pengingat tidak pernah mengirim apa pun.** Aplikasi hanya menyusun teksnya;
+bendahara yang menyalin dan mengirim lewat WhatsApp. Ini keputusan, bukan
+keterbatasan sementara: mengirim otomatis menuntut menyimpan nomor HP, dan nomor
+HP siswa tidak boleh masuk aplikasi ini (UU PDP, PRD bagian 1).
+
+**`PengingatService` tidak menghitung uang sendiri.** Sisa tagihan, denda, dan
+"sudah jatuh tempo atau belum" semuanya ditanyakan ke `KasService`. Kalau suatu
+saat angka di teks pengingat berbeda dari angka di laporan, berarti ada hitungan
+kedua yang menyelinap masuk — itu bug, bukan selisih pembulatan.
+
+**`{batas}` diisi bendahara, bukan diambil dari jatuh tempo tagihan.** Jatuh
+tempo tiap periode sudah tertulis di `{rincian}`; yang dibutuhkan kalimat
+penutup adalah tenggat baru yang disepakati saat menagih. Bawaannya sepekan dari
+hari pengingat dibuat, dan bisa diganti di halaman Pengingat.
+
+**QRIS disajikan lewat route bertoken, bukan disimpan di folder publik.**
+Berkasnya ada di `storage/app/private/kelas-{id}/qris/` dengan nama acak, dan
+satu-satunya pintu masuk adalah `GET /kelas/{token}/qris`. Menaruhnya di
+`public/uploads` berarti siapa pun yang menebak URL-nya bisa membukanya tanpa
+token kelas sama sekali.
+
+**Halaman kelas hanya dilindungi token, dan token bisa tersebar.** Karena itu
+form unggah QRIS memuat peringatan tegas: gambar itu akan terlihat siapa pun
+yang memegang tautan kelas. Peringatannya ada di form, bukan di dokumentasi —
+yang membaca dokumentasi hanya yang sudah curiga.
+
 
 **Akun uji lokal** (dari `php artisan db:seed`):
 `bendahara@kaskelas.test` / `RahasiaKuat123` — kelas XII TRPL 1, SMKN 1 Subang.

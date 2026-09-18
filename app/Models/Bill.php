@@ -16,7 +16,7 @@ class Bill extends Model
 {
     use BelongsToClassroom;
 
-    protected $fillable = ['student_id', 'period_id', 'nominal', 'is_bebas', 'alasan_bebas'];
+    protected $fillable = ['student_id', 'period_id', 'campaign_id', 'nominal', 'is_bebas', 'alasan_bebas'];
 
     protected function casts(): array
     {
@@ -36,9 +36,21 @@ class Bill extends Model
         return $this->belongsTo(Period::class);
     }
 
+    public function campaign(): BelongsTo
+    {
+        return $this->belongsTo(Campaign::class);
+    }
+
     public function allocations(): HasMany
     {
         return $this->hasMany(PaymentAllocation::class);
+    }
+
+    /** Nama tagihan untuk ditampilkan: label periode, atau nama campaign-nya. */
+    public function label(): string
+    {
+        return $this->period?->label
+            ?? ($this->campaign?->nama ? 'Iuran '.$this->campaign->nama : 'Iuran insidental');
     }
 
     /** Tagihan yang dibebaskan tidak ditagih dan tidak dihitung sebagai tunggakan. */

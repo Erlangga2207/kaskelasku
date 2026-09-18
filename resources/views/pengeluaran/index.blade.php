@@ -9,6 +9,13 @@
             <strong class="tabular {{ $saldoKas < 0 ? 'text-keluar' : 'text-masuk' }}">
                 {{ Uang::format(Uang::keDesimal($saldoKas)) }}
             </strong>
+            @if ($danaCampaign > 0)
+                — yang bebas dipakai
+                <strong class="tabular {{ $saldoBebas < 0 ? 'text-keluar' : 'text-masuk' }}">
+                    {{ Uang::format(Uang::keDesimal($saldoBebas)) }}
+                </strong>,
+                sisanya milik campaign yang sedang berjalan.
+            @endif
         </p>
     </div>
 
@@ -55,7 +62,12 @@
 
                         <span class="font-semibold text-ink">{{ $keluar->keterangan }}</span>
 
-                        <span><x-ui.badge>{{ $keluar->category->nama }}</x-ui.badge></span>
+                        <span class="flex flex-wrap items-center gap-1">
+                            <x-ui.badge>{{ $keluar->category->nama }}</x-ui.badge>
+                            @if ($keluar->campaign)
+                                <x-ui.badge tipe="info">{{ $keluar->campaign->nama }}</x-ui.badge>
+                            @endif
+                        </span>
 
                         <span class="font-semibold text-keluar tabular sm:text-right">
                             − {{ Uang::format($keluar->jumlah) }}

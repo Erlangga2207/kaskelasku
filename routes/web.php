@@ -3,14 +3,17 @@
 use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\BillController;
+use App\Http\Controllers\CampaignController;
 use App\Http\Controllers\ExpenseCategoryController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\ClassroomQrisController;
 use App\Http\Controllers\ClassroomSettingController;
 use App\Http\Controllers\ClassroomTokenController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PeriodController;
 use App\Http\Controllers\PublicClassController;
+use App\Http\Controllers\ReminderController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\StudentBulkController;
 use App\Http\Controllers\StudentController;
@@ -50,6 +53,16 @@ Route::middleware(['auth', 'kelas'])->group(function () {
     Route::patch('/periode/{periode}', [PeriodController::class, 'update'])->name('periode.update');
     Route::patch('/periode/{periode}/libur', [PeriodController::class, 'libur'])->name('periode.libur');
 
+    // --- Iuran insidental (campaign) ---
+    Route::get('/campaign', [CampaignController::class, 'index'])->name('campaign.index');
+    Route::get('/campaign/baru', [CampaignController::class, 'create'])->name('campaign.create');
+    Route::post('/campaign', [CampaignController::class, 'store'])->name('campaign.store');
+    Route::get('/campaign/{campaign}', [CampaignController::class, 'show'])->name('campaign.show');
+    Route::get('/campaign/{campaign}/ubah', [CampaignController::class, 'edit'])->name('campaign.edit');
+    Route::patch('/campaign/{campaign}', [CampaignController::class, 'update'])->name('campaign.update');
+    Route::patch('/campaign/{campaign}/status', [CampaignController::class, 'status'])->name('campaign.status');
+    Route::delete('/campaign/{campaign}', [CampaignController::class, 'destroy'])->name('campaign.destroy');
+
     // --- Pembayaran ---
     Route::get('/pembayaran', [PaymentController::class, 'index'])->name('pembayaran.index');
     Route::get('/pembayaran/baru', [PaymentController::class, 'create'])->name('pembayaran.create');
@@ -73,10 +86,16 @@ Route::middleware(['auth', 'kelas'])->group(function () {
     Route::get('/laporan/pdf', [ReportController::class, 'pdf'])->name('laporan.pdf');
     Route::get('/audit', [AuditLogController::class, 'index'])->name('audit.index');
 
+    // --- Pengingat tunggakan (teks siap salin, tanpa pengiriman otomatis) ---
+    Route::get('/pengingat', [ReminderController::class, 'index'])->name('pengingat.index');
+
     // --- Pengaturan kelas ---
     Route::get('/pengaturan', [ClassroomSettingController::class, 'edit'])->name('pengaturan.edit');
     Route::patch('/pengaturan', [ClassroomSettingController::class, 'update'])->name('pengaturan.update');
     Route::patch('/pengaturan/token', [ClassroomTokenController::class, 'rotate'])->name('pengaturan.token');
+    Route::patch('/pengaturan/pengingat', [ClassroomSettingController::class, 'pengingat'])->name('pengaturan.pengingat');
+    Route::post('/pengaturan/qris', [ClassroomQrisController::class, 'store'])->name('pengaturan.qris');
+    Route::delete('/pengaturan/qris', [ClassroomQrisController::class, 'destroy'])->name('pengaturan.qris.hapus');
 });
 
 /*
@@ -90,6 +109,7 @@ Route::middleware(['auth', 'kelas'])->group(function () {
 */
 Route::middleware('kelas.token')->group(function () {
     Route::get('/kelas/{token}', [PublicClassController::class, 'show'])->name('publik.kelas');
+    Route::get('/kelas/{token}/qris', [PublicClassController::class, 'qris'])->name('publik.qris');
     Route::get('/kelas/{token}/manifest.webmanifest', [PublicClassController::class, 'manifest'])
         ->name('publik.manifest');
 });

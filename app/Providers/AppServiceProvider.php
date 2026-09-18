@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Models\Bill;
+use App\Models\Campaign;
 use App\Models\Expense;
 use App\Models\ExpenseCategory;
 use App\Models\Payment;
@@ -20,6 +21,7 @@ class AppServiceProvider extends ServiceProvider
     protected array $modelTerpantau = [
         Student::class,
         Period::class,
+        Campaign::class,
         Bill::class,
         Payment::class,
         PaymentAllocation::class,

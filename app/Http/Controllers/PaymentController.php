@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\PaymentRequest;
+use App\Models\Bill;
 use App\Models\Payment;
 use App\Models\Student;
 use App\Services\KasService;
@@ -59,10 +60,18 @@ class PaymentController extends Controller
             ? $this->kelas()->students()->find($request->query('siswa'))
             : null;
 
+        // Urutannya tetap seperti yang dipakai alokasi otomatis (terlama dulu);
+        // pengelompokan di bawah hanya memisah tampilannya, tidak mengubah urutan.
+        $tagihan = $siswa ? $this->kas->tagihanBelumLunas($siswa) : collect();
+
         return view('pembayaran.form', [
             'daftarSiswa' => $this->kelas()->students()->aktif()->urutAbsen()->get(),
             'siswaTerpilih' => $siswa,
-            'tagihan' => $siswa ? $this->kas->tagihanBelumLunas($siswa) : collect(),
+            'tagihan' => $tagihan,
+            'tagihanRutin' => $tagihan->filter(fn (Bill $b) => $b->period_id !== null)->values(),
+            // Satu campaign hanya pernah menerbitkan satu tagihan per siswa,
+            // jadi daftar ini otomatis berisi satu baris per iuran insidental.
+            'tagihanInsidental' => $tagihan->filter(fn (Bill $b) => $b->campaign_id !== null)->values(),
             'deposit' => $siswa ? $this->kas->depositSiswa($siswa) : 0,
             'kas' => $this->kas,
         ]);
@@ -88,9 +97,11 @@ class PaymentController extends Controller
 
                 $rincian = array_filter($data['alokasi'] ?? [], fn ($v) => $v !== null && $v !== '');
 
-                if (($data['mode_alokasi'] ?? 'otomatis') === 'manual' && $rincian !== []) {
+                if (($data['mode_alokasi'] ?? 'otomatis') === 'manual') {
+                    // Sengaja TIDAK memanggil alokasikanDeposit sesudahnya: sisa yang
+                    // tidak dibagi bendahara memang harus mengendap sebagai deposit,
+                    // bukan dilempar balik ke tagihan terlama oleh mesin otomatis.
                     $this->kas->alokasikanManual($payment, $rincian);
-                    // Sisa yang tidak dialokasikan manual tetap jadi deposit siswa.
                 } else {
                     $this->kas->alokasikanDeposit($payment->student);
                 }

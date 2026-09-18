@@ -14,9 +14,16 @@ use Illuminate\Support\Str;
  */
 class Classroom extends Model
 {
+    /**
+     * qris_path sengaja TIDAK di sini: nilainya berasal dari hasil penyimpanan
+     * berkas di server, bukan dari input pengguna — sama seperti bukti_path
+     * pada payments. Menaruhnya di fillable membuka jalan bagi request untuk
+     * menunjuk berkas mana pun di storage.
+     */
     protected $fillable = [
         'nama_kelas', 'sekolah', 'tipe_periode',
         'denda_aktif', 'denda_mode', 'denda_nominal', 'grace_days', 'denda_maks',
+        'template_pengingat', 'qris_nama_pemilik',
     ];
 
     protected function casts(): array
@@ -49,6 +56,12 @@ class Classroom extends Model
         ])->save();
     }
 
+    /** Kelas sudah memasang QRIS, jadi boleh ditampilkan di halaman kelas. */
+    public function punyaQris(): bool
+    {
+        return $this->qris_path !== null;
+    }
+
     public function owner(): BelongsTo
     {
         return $this->belongsTo(User::class, 'owner_id');
@@ -67,6 +80,11 @@ class Classroom extends Model
     public function periods(): HasMany
     {
         return $this->hasMany(Period::class);
+    }
+
+    public function campaigns(): HasMany
+    {
+        return $this->hasMany(Campaign::class);
     }
 
     public function bills(): HasMany

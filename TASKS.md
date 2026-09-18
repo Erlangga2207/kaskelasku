@@ -121,22 +121,26 @@ saldo tidak pernah tampil basi setelah ada transaksi baru.
 
 ## Fase 7 — v1.1: Iuran Insidental
 
-- [ ] Migration: `campaigns`, FK `bills.campaign_id`, FK `expenses.campaign_id`
-- [ ] CRUD campaign + pilih peserta (default semua siswa aktif)
-- [ ] Generate `bills` campaign (`period_id` NULL)
-- [ ] Pastikan mesin alokasi pembayaran **tidak diubah sama sekali** — kalau butuh
+- [x] Migration: `campaigns`, FK `bills.campaign_id`, FK `expenses.campaign_id`
+- [x] CRUD campaign + pilih peserta (default semua siswa aktif)
+- [x] Generate `bills` campaign (`period_id` NULL)
+- [x] Pastikan mesin alokasi pembayaran **tidak diubah sama sekali** — kalau butuh
       cabang kode baru, berarti desainnya salah
-- [ ] Dashboard memisahkan saldo bebas vs saldo campaign yang belum terpakai
-- [ ] Laporan campaign: terkumpul / terpakai / sisa
-- [ ] Campaign dibatalkan → pembayaran jadi deposit siswa, bukan terhapus
-- [ ] Progres campaign tampil di halaman kelas
+- [x] Dashboard memisahkan saldo bebas vs saldo campaign yang belum terpakai
+- [x] Laporan campaign: terkumpul / terpakai / sisa
+- [x] Campaign dibatalkan → pembayaran jadi deposit siswa, bukan terhapus
+- [x] Progres campaign tampil di halaman kelas
+
+**Belum dikerjakan:** deploy. Semua masih di branch `feat/fase-7-iuran-insidental`.
 
 ## Fase 8 — v1.1: Pengingat & QRIS
 
-- [ ] Generator teks pengingat, placeholder `{nama} {rincian} {total} {batas}`
-- [ ] Template bisa diubah per kelas
-- [ ] Tombol salin teks
-- [ ] Upload QRIS statis + nama pemilik per kelas, tampil di halaman kelas
+- [x] Generator teks pengingat, placeholder `{nama} {rincian} {total} {batas}`
+- [x] Template bisa diubah per kelas
+- [x] Tombol salin teks — per siswa dan beberapa siswa sekaligus dari daftar tunggakan
+- [x] Upload QRIS statis + nama pemilik per kelas, tampil di halaman kelas
+
+**Belum dikerjakan:** deploy. Semua masih di branch `feat/fase-8-pengingat-qris`.
 
 ## Fase 9 — v1.2: Tutup Buku & Serah Terima
 

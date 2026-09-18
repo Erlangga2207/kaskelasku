@@ -58,7 +58,92 @@
         </x-ui.card>
     @endif
 
-    <x-ui.card judul="Status bayar" keterangan="Ketuk nama untuk melihat rincian per periode." padat>
+    @if ($campaign->isNotEmpty())
+        {{-- Progres iuran insidental. Yang tampil hanya angka kelas — tidak ada
+             satu pun data pribadi tambahan di luar yang sudah ada di halaman ini. --}}
+        <x-ui.card judul="Iuran insidental" padat>
+            <ul class="divide-y divide-line">
+                @foreach ($campaign as $baris)
+                    <li class="px-4 py-3 sm:px-5">
+                        <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                            <span class="font-semibold">
+                                {{ $baris['campaign']->nama }}
+                                @if ($baris['campaign']->status === 'selesai')
+                                    <x-ui.badge tipe="lunas">Selesai</x-ui.badge>
+                                @endif
+                            </span>
+                            <span class="text-sm text-ink-soft tabular">
+                                {{ Uang::format(Uang::keDesimal($baris['terkumpul'])) }}
+                                / {{ Uang::format(Uang::keDesimal($baris['tertagih'])) }}
+                            </span>
+                        </div>
+
+                        @if ($baris['campaign']->deskripsi)
+                            <p class="mt-0.5 text-sm text-ink-faint">{{ $baris['campaign']->deskripsi }}</p>
+                        @endif
+
+                        <div class="mt-2 flex items-center gap-2">
+                            <div class="h-2 flex-1 overflow-hidden rounded-full bg-surface"
+                                 role="progressbar" aria-valuenow="{{ $baris['persen'] }}"
+                                 aria-valuemin="0" aria-valuemax="100"
+                                 aria-label="Ketercapaian {{ $baris['campaign']->nama }}">
+                                <div class="h-full rounded-full bg-brand transition-[width] duration-300"
+                                     style="width: {{ min($baris['persen'], 100) }}%"></div>
+                            </div>
+                            <span class="shrink-0 text-xs font-semibold tabular text-ink-soft">
+                                {{ $baris['persen'] }}% &middot; {{ $baris['lunas'] }}/{{ $baris['peserta'] }}
+                            </span>
+                        </div>
+
+                        <p class="mt-1.5 text-xs text-ink-faint">
+                            {{ Uang::format($baris['campaign']->nominal_per_siswa) }} per siswa
+                            @if ($baris['campaign']->deadline)
+                                &middot; batas {{ $baris['campaign']->deadline->translatedFormat('j M Y') }}
+                            @endif
+                            &middot; terpakai {{ Uang::format(Uang::keDesimal($baris['terpakai'])) }}
+                            &middot; sisa {{ Uang::format(Uang::keDesimal($baris['sisa'])) }}
+                        </p>
+                    </li>
+                @endforeach
+            </ul>
+        </x-ui.card>
+    @endif
+
+    @if ($kelas->punyaQris())
+        {{-- QRIS statis. Tidak ada integrasi pembayaran apa pun: gambar ini hanya
+             memudahkan transfer, dan bendahara tetap mencatat serta mengonfirmasi
+             uang masuk secara manual. --}}
+        <x-ui.card judul="Bayar lewat QRIS" padat>
+            <div class="flex flex-col items-center gap-4 px-4 py-4 sm:flex-row sm:items-start sm:px-5">
+                <img src="{{ route('publik.qris', $kelas->public_token) }}"
+                     alt="Kode QRIS kas kelas {{ $kelas->nama_kelas }}"
+                     loading="lazy"
+                     class="w-56 max-w-full shrink-0 rounded-xl border border-line bg-white p-3">
+
+                <div class="min-w-0 flex-1 space-y-2 text-center sm:text-left">
+                    @if ($kelas->qris_nama_pemilik)
+                        <div>
+                            <p class="text-sm text-ink-faint">Atas nama</p>
+                            <p class="text-lg font-bold">{{ $kelas->qris_nama_pemilik }}</p>
+                        </div>
+                    @endif
+
+                    <p class="text-sm text-ink-soft">
+                        Pindai dengan aplikasi bank atau e-wallet, lalu
+                        <strong class="font-semibold text-ink">kirim bukti transfernya ke bendahara</strong>.
+                    </p>
+
+                    <p class="text-sm text-ink-faint">
+                        Status bayar di halaman ini berubah setelah bendahara mencatatnya. Jadi kalau
+                        baru saja membayar dan masih tertulis belum lunas, itu wajar — tunggu dicatat dulu.
+                    </p>
+                </div>
+            </div>
+        </x-ui.card>
+    @endif
+
+
+    <x-ui.card judul="Status bayar" keterangan="Ketuk nama untuk melihat rincian tagihannya." padat>
         @if ($daftarSiswa->isEmpty())
             <x-ui.empty ikon="siswa" judul="Belum ada data siswa">
                 Bendahara belum memasukkan daftar anggota kelas.

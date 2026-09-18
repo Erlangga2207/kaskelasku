@@ -12,7 +12,7 @@ class Expense extends Model
 {
     use BelongsToClassroom, SoftDeletes;
 
-    protected $fillable = ['tanggal', 'category_id', 'jumlah', 'keterangan'];
+    protected $fillable = ['tanggal', 'category_id', 'campaign_id', 'jumlah', 'keterangan'];
 
     protected function casts(): array
     {
@@ -33,6 +33,12 @@ class Expense extends Model
     public function category(): BelongsTo
     {
         return $this->belongsTo(ExpenseCategory::class, 'category_id');
+    }
+
+    /** Pengeluaran boleh ditandai milik satu campaign, supaya sisa dananya terlacak. */
+    public function campaign(): BelongsTo
+    {
+        return $this->belongsTo(Campaign::class);
     }
 
     public function creator(): BelongsTo
