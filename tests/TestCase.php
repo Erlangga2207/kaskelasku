@@ -3,8 +3,10 @@
 namespace Tests;
 
 use App\Models\Classroom;
+use App\Models\Period;
 use App\Models\Student;
 use App\Models\User;
+use App\Services\KasService;
 use App\Support\CurrentClassroom;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 
@@ -39,6 +41,12 @@ abstract class TestCase extends BaseTestCase
             'password' => 'RahasiaKuat123',
         ]);
 
+        // Sejak v2.0 seluruh route bendahara menuntut email terverifikasi.
+        // Helper ini mewakili bendahara yang SUDAH selesai mendaftar, jadi
+        // verifikasinya diberikan di sini. Alur pendaftaran dan verifikasinya
+        // sendiri diuji terpisah di PendaftaranTest.
+        $user->forceFill(['email_verified_at' => now()])->save();
+
         $classroom = CurrentClassroom::withoutTenancy(function () use ($namaKelas, $sekolah, $user) {
             $classroom = new Classroom([
                 'nama_kelas' => $namaKelas,
@@ -63,6 +71,42 @@ abstract class TestCase extends BaseTestCase
     protected function dalamKelas(Classroom $classroom, callable $callback): mixed
     {
         return CurrentClassroom::runFor($classroom, $callback);
+    }
+
+    /**
+     * Membuat periode iuran lengkap dengan tagihannya, lewat KasService.
+     *
+     * Sejak v2.0 kelas tanpa satu pun sumber tagihan dipantulkan middleware
+     * 'siap' ke wizard, jadi test yang menembak route Bayar/Keluar/Laporan
+     * harus memakai kelas yang penyiapannya memang sudah selesai. Lewat service
+     * yang sama dengan controller supaya aturan tahun ajaran tidak dipalsukan
+     * di test.
+     *
+     * Dua langkah, persis seperti PeriodController: generatePeriode() hanya
+     * melahirkan periodenya, tagihannya terbit lewat generateTagihanPeriode().
+     * Kalau helper ini cuma memanggil yang pertama, ia akan diam-diam membuat
+     * kelas berisi periode tanpa tagihan — keadaan yang justru jadi sumber bug
+     * Fase 2 dulu.
+     *
+     * @return int Jumlah tagihan yang terbentuk.
+     */
+    protected function buatPeriode(
+        Classroom $classroom,
+        string $mulai = '2026-01-01',
+        int|string $nominal = 5000,
+        ?string $sampai = '2026-03-31',
+    ): int {
+        return $this->dalamKelas($classroom, function () use ($classroom, $mulai, $nominal, $sampai) {
+            $kas = app(KasService::class);
+            $sebelum = $classroom->periods()->pluck('id')->all();
+
+            $kas->generatePeriode($classroom, $mulai, $nominal, $sampai);
+
+            return $classroom->periods()
+                ->whereNotIn('id', $sebelum)
+                ->get()
+                ->sum(fn (Period $periode) => $kas->generateTagihanPeriode($periode));
+        });
     }
 
     protected function buatSiswa(Classroom $classroom, string $nama = 'Siswa Uji', array $atribut = []): Student

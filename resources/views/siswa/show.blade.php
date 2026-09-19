@@ -59,7 +59,7 @@
                     @endphp
                     <li x-data="{ panel: false }" class="px-4 py-3 sm:px-5">
                         <div class="grid gap-x-3 gap-y-1 sm:grid-cols-[1fr_8rem_8rem_7rem] sm:items-center">
-                            <span class="font-semibold">{{ $bill->period?->label ?? 'Iuran insidental' }}</span>
+                            <span class="font-semibold">{{ $bill->label() }}</span>
 
                             <span class="tabular text-sm text-ink-soft">
                                 {{ Uang::format($bill->nominal) }}

@@ -143,10 +143,16 @@ class PelaporanTest extends TestCase
 
     public function test_audit_log_kelas_a_tidak_memuat_jejak_kelas_b(): void
     {
-        [, $userA] = $this->buatKelas('XII TRPL 1', 'SMKN 1 Subang');
+        [$kelasA, $userA] = $this->buatKelas('XII TRPL 1', 'SMKN 1 Subang');
         [$kelasB, $userB] = $this->buatKelas('XI IPA 3', 'SMAN 2 Bandung');
 
+        // Halaman audit ada di balik middleware 'siap', jadi kelas A harus
+        // benar-benar sudah disiapkan -- bukan kelas kosong seperti dulu.
+        $this->buatSiswa($kelasA, 'Adinda Kelas A');
+        $this->buatPeriode($kelasA);
+
         $this->buatSiswa($kelasB, 'Fajar Kelas B');
+        $this->buatPeriode($kelasB);
 
         $this->actingAs($userB)->post(route('siswa.store'), [
             'nama' => 'Gita Kelas B', 'no_absen' => 9, 'tgl_mulai_aktif' => '2026-01-01',
@@ -168,6 +174,9 @@ class PelaporanTest extends TestCase
 
         $siswaA = $this->buatSiswa($kelasA, 'Adinda Kelas A');
         $siswaB = $this->buatSiswa($kelasB, 'Fajar Kelas B');
+
+        $this->buatPeriode($kelasA);
+        $this->buatPeriode($kelasB);
 
         $this->actingAs($userA)->post(route('pembayaran.store'), [
             'student_id' => $siswaA->id, 'tanggal' => '2026-01-10', 'jumlah' => 5000, 'metode' => 'tunai',
@@ -193,6 +202,7 @@ class PelaporanTest extends TestCase
     {
         [$kelas, $user] = $this->buatKelas();
         $siswa = $this->buatSiswa($kelas, 'Adinda');
+        $this->buatPeriode($kelas);
 
         $this->actingAs($user)->post(route('pembayaran.store'), [
             'student_id' => $siswa->id, 'tanggal' => '2026-01-10', 'jumlah' => 5000, 'metode' => 'tunai',

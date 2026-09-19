@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Bill;
+use App\Models\Campaign;
 use App\Models\Classroom;
 use App\Models\Expense;
 use App\Models\Payment;
@@ -280,12 +281,238 @@ class KasService
 
     /*
     |--------------------------------------------------------------------------
+    | Iuran insidental / campaign (v1.1)
+    |--------------------------------------------------------------------------
+    | Campaign TIDAK punya logika uang sendiri. Ia hanya menerbitkan tagihan —
+    | sama seperti periode — lalu menumpang mesin alokasi yang sudah ada.
+    | Seluruh angka di bawah dihitung ulang dari bills, payment_allocations,
+    | dan expenses; tidak ada satu pun ringkasan campaign yang disimpan di kolom.
+    */
+
+    /**
+     * Menerbitkan tagihan campaign untuk peserta terpilih.
+     *
+     * Bentuknya persis tagihan periode, hanya sumbernya berbeda: period_id NULL,
+     * campaign_id terisi. Setelah tagihan lahir, deposit siswa dialokasikan lewat
+     * alokasikanDeposit() — mesin yang sama dengan iuran rutin, tanpa cabang baru.
+     *
+     * @param  array<int, int|string>  $pesertaIds
+     * @return int jumlah tagihan baru yang terbentuk
+     */
+    public function generateTagihanCampaign(Campaign $campaign, array $pesertaIds): int
+    {
+        if ($campaign->isDibatalkan()) {
+            throw new RuntimeException('Campaign yang sudah dibatalkan tidak bisa menerbitkan tagihan.');
+        }
+
+        $sudahPunya = Bill::where('campaign_id', $campaign->id)->pluck('student_id')->all();
+
+        // Peserta ditelusuri lewat model bertenant, bukan Student::find() mentah:
+        // ID milik kelas lain tidak pernah berubah jadi tagihan di kelas ini.
+        $peserta = Student::whereIn('id', $pesertaIds)->get();
+
+        $dibuat = 0;
+
+        DB::transaction(function () use ($campaign, $peserta, $sudahPunya, &$dibuat) {
+            $peserta->each(function (Student $siswa) use ($campaign, $sudahPunya, &$dibuat) {
+                if (in_array($siswa->id, $sudahPunya)) {
+                    return;
+                }
+
+                Bill::create([
+                    'student_id' => $siswa->id,
+                    'campaign_id' => $campaign->id,
+                    'nominal' => $campaign->nominal_per_siswa,
+                ]);
+
+                $dibuat++;
+
+                // Kelebihan bayar yang mengendap langsung menutup tagihan baru ini.
+                $this->alokasikanDeposit($siswa);
+            });
+        });
+
+        return $dibuat;
+    }
+
+    /**
+     * Menarik kembali tagihan campaign — dipakai saat campaign dibatalkan atau
+     * peserta dikeluarkan.
+     *
+     * Alokasinya dilepas lebih dulu supaya uangnya kembali jadi deposit siswa,
+     * baru barisnya dibuang. PEMBAYARAN TIDAK PERNAH IKUT TERHAPUS: uang yang
+     * sudah diterima tetap ada di kas, yang berubah hanya peruntukannya.
+     *
+     * @param  array<int, int|string>|null  $studentIds  null = seluruh peserta
+     */
+    public function hapusTagihanCampaign(Campaign $campaign, ?array $studentIds = null): int
+    {
+        $terhapus = 0;
+
+        DB::transaction(function () use ($campaign, $studentIds, &$terhapus) {
+            $tagihan = Bill::where('campaign_id', $campaign->id)
+                ->when($studentIds !== null, fn ($q) => $q->whereIn('student_id', $studentIds))
+                ->with(['student', 'allocations'])
+                ->get();
+
+            $terdampak = collect();
+
+            foreach ($tagihan as $bill) {
+                $bill->allocations->each->delete();
+
+                if ($bill->student) {
+                    $terdampak->put($bill->student->id, $bill->student);
+                }
+
+                $bill->delete();
+                $terhapus++;
+            }
+
+            // Uang yang tadinya menempel di tagihan campaign kini menganggur.
+            // Mesin alokasi yang sama memakainya untuk tagihan lain yang masih
+            // terbuka; sisanya mengendap sebagai deposit siswa.
+            $terdampak->each(fn (Student $siswa) => $this->alokasikanDeposit($siswa));
+        });
+
+        return $terhapus;
+    }
+
+    /** Peserta yang tagihannya sudah menerima uang — tidak boleh dikeluarkan diam-diam. */
+    public function pesertaSudahBayar(Campaign $campaign): Collection
+    {
+        return Bill::where('campaign_id', $campaign->id)
+            ->has('allocations')
+            ->pluck('student_id');
+    }
+
+    /** Total yang ditagihkan campaign (tagihan yang dibebaskan tidak dihitung). */
+    public function tertagihCampaign(Campaign $campaign): int
+    {
+        return Bill::where('campaign_id', $campaign->id)
+            ->get()
+            ->sum(fn (Bill $bill) => $bill->is_bebas ? 0 : Uang::keSen($bill->nominal));
+    }
+
+    /** Uang yang sudah masuk ke campaign = alokasi ke tagihan-tagihannya (PRD 12). */
+    public function terkumpulCampaign(Campaign $campaign): int
+    {
+        return Bill::where('campaign_id', $campaign->id)
+            ->with('allocations')
+            ->get()
+            ->sum(fn (Bill $bill) => $this->dibayarTagihan($bill));
+    }
+
+    /**
+     * Uang campaign yang sudah dibelanjakan = pengeluaran bertanda campaign ini.
+     *
+     * $abaikan dipakai saat mengubah pengeluaran: nominal lamanya dikembalikan
+     * dulu ke pot, supaya mengubah Rp 50.000 menjadi Rp 60.000 tidak dinilai
+     * seolah kelas membelanjakan Rp 110.000.
+     */
+    public function terpakaiCampaign(Campaign $campaign, ?Expense $abaikan = null): int
+    {
+        return Uang::keSen((string) Expense::where('campaign_id', $campaign->id)
+            ->when($abaikan?->exists, fn ($q) => $q->whereKeyNot($abaikan->getKey()))
+            ->sum('jumlah'));
+    }
+
+    /** Sisa dana campaign: terkumpul − terpakai. */
+    public function sisaCampaign(Campaign $campaign, ?Expense $abaikan = null): int
+    {
+        return $this->terkumpulCampaign($campaign) - $this->terpakaiCampaign($campaign, $abaikan);
+    }
+
+    /**
+     * Seluruh uang campaign yang sudah punya peruntukan tapi belum dibelanjakan.
+     *
+     * Campaign yang dibatalkan tidak ikut: tagihannya sudah ditarik dan uangnya
+     * sudah kembali menjadi deposit siswa, jadi tidak ada lagi yang ditahan.
+     */
+    public function danaCampaignTertahan(?Expense $abaikan = null): int
+    {
+        return Campaign::berjalan()->get()
+            ->sum(fn (Campaign $campaign) => max(0, $this->sisaCampaign($campaign, $abaikan)));
+    }
+
+    /**
+     * Saldo bebas = saldo kas dikurangi dana campaign yang belum terpakai.
+     *
+     * Inilah angka yang boleh dibelanjakan untuk keperluan umum kelas. Tanpa
+     * pemisahan ini saldo terlihat besar padahal sebagian sudah menjadi milik
+     * studi tour atau perpisahan.
+     */
+    public function saldoBebas(?Expense $abaikan = null): int
+    {
+        $kas = $this->saldoKas() + ($abaikan?->exists ? Uang::keSen($abaikan->jumlah) : 0);
+
+        return $kas - $this->danaCampaignTertahan($abaikan);
+    }
+
+    /** Laporan satu campaign: terkumpul / terpakai / sisa, beserta progres pesertanya. */
+    public function ringkasanCampaign(Campaign $campaign): array
+    {
+        $tagihan = Bill::where('campaign_id', $campaign->id)->with('allocations')->get();
+
+        $tertagih = $tagihan->sum(fn (Bill $bill) => $bill->is_bebas ? 0 : Uang::keSen($bill->nominal));
+        $terkumpul = $tagihan->sum(fn (Bill $bill) => $this->dibayarTagihan($bill));
+        $terpakai = $this->terpakaiCampaign($campaign);
+
+        return [
+            'campaign' => $campaign,
+            'peserta' => $tagihan->count(),
+            'lunas' => $tagihan->filter(fn (Bill $bill) => $this->sisaTagihan($bill) <= 0)->count(),
+            'tertagih' => $tertagih,
+            'terkumpul' => $terkumpul,
+            'kurang' => max(0, $tertagih - $terkumpul),
+            'terpakai' => $terpakai,
+            'sisa' => $terkumpul - $terpakai,
+            'persen' => $tertagih > 0 ? (int) round($terkumpul / $tertagih * 100) : 0,
+        ];
+    }
+
+    /** @return Collection<int, array<string, mixed>> */
+    public function rekapCampaign(bool $hanyaBerjalan = false): Collection
+    {
+        return Campaign::when($hanyaBerjalan, fn ($q) => $q->berjalan())
+            ->urutBaru()
+            ->get()
+            ->map(fn (Campaign $campaign) => $this->ringkasanCampaign($campaign))
+            ->values();
+    }
+
+    /*
+    |--------------------------------------------------------------------------
     | Perhitungan (PRD bagian 12)
     |--------------------------------------------------------------------------
     | Semua nilai dikembalikan dalam satuan SEN agar bebas dari galat pembulatan.
     | Pemanggil memakai Uang::format() atau Uang::keDesimal() saat menampilkan
     | atau menyimpannya.
     */
+
+    /**
+     * Tanggal jatuh tempo sebuah tagihan, apa pun sumbernya.
+     *
+     * Tagihan periode memakai periods.jatuh_tempo; tagihan campaign memakai
+     * campaigns.deadline. Campaign tanpa deadline berarti belum pernah jatuh
+     * tempo — uangnya memang ditunggu, tapi belum pantas disebut tunggakan.
+     */
+    public function jatuhTempoTagihan(Bill $bill): ?CarbonImmutable
+    {
+        if ($bill->period !== null) {
+            return CarbonImmutable::parse($bill->period->jatuh_tempo)->startOfDay();
+        }
+
+        return $bill->campaign?->deadline === null
+            ? null
+            : CarbonImmutable::parse($bill->campaign->deadline)->startOfDay();
+    }
+
+    public function sudahJatuhTempo(Bill $bill, CarbonInterface|string|null $per = null): bool
+    {
+        $tempo = $this->jatuhTempoTagihan($bill);
+
+        return $tempo !== null && $tempo->lte(CarbonImmutable::parse($per ?? now())->startOfDay());
+    }
 
     /** SUM(payment_allocations.jumlah) untuk satu tagihan. */
     public function dibayarTagihan(Bill $bill): int
@@ -364,6 +591,8 @@ class KasService
     {
         $kelas ??= CurrentClassroom::getOrFail();
 
+        // Tagihan campaign (period_id NULL) tidak pernah kena denda: pengaturan
+        // denda kelas mengatur keterlambatan iuran RUTIN, bukan iuran insidental.
         if (! $kelas->denda_aktif || $bill->is_bebas || $bill->period === null) {
             return 0;
         }
@@ -399,10 +628,9 @@ class KasService
 
         return Bill::where('student_id', $siswa->id)
             ->where('is_bebas', false)
-            ->with(['period', 'allocations'])
+            ->with(['period', 'campaign', 'allocations'])
             ->get()
-            ->filter(fn (Bill $bill) => $bill->period === null
-                || CarbonImmutable::parse($bill->period->jatuh_tempo)->lte($hariIni))
+            ->filter(fn (Bill $bill) => $this->sudahJatuhTempo($bill, $hariIni))
             ->sum(fn (Bill $bill) => $this->sisaTagihan($bill) + $this->dendaTagihan($bill, $kelas));
     }
 
@@ -425,7 +653,9 @@ class KasService
     {
         return Bill::where('student_id', $siswa->id)
             ->where('is_bebas', false)
-            ->with(['period', 'allocations'])
+            // campaign ikut dimuat karena form pembayaran mengelompokkan tagihan
+            // per sumbernya; tanpa ini setiap baris memicu query sendiri.
+            ->with(['period', 'campaign', 'allocations'])
             ->get()
             ->sortBy([
                 fn (Bill $a, Bill $b) => ($a->period?->jatuh_tempo?->timestamp ?? PHP_INT_MAX)
@@ -594,6 +824,10 @@ class KasService
 
         return [
             'saldo' => $this->saldoKas(),
+            // Saldo kas terbagi dua: yang boleh dipakai bebas, dan yang sudah
+            // punya peruntukan campaign. Keduanya selalu berjumlah saldo kas.
+            'saldo_bebas' => $this->saldoBebas(),
+            'dana_campaign' => $this->danaCampaignTertahan(),
             'masuk' => $this->totalMasuk(),
             'keluar' => $this->totalKeluar(),
             'siswa_aktif' => Student::aktif()->count(),
@@ -621,7 +855,7 @@ class KasService
             ->get();
 
         $tagihan = Bill::where('is_bebas', false)
-            ->with(['period', 'allocations'])
+            ->with(['period', 'campaign', 'allocations'])
             ->get()
             ->groupBy('student_id');
 
@@ -640,8 +874,7 @@ class KasService
                 $miliknya = $tagihan->get($s->id, collect());
 
                 $tunggakan = $miliknya
-                    ->filter(fn (Bill $b) => $b->period === null
-                        || CarbonImmutable::parse($b->period->jatuh_tempo)->lte($hariIni))
+                    ->filter(fn (Bill $b) => $this->sudahJatuhTempo($b, $hariIni))
                     ->sum(fn (Bill $b) => $this->sisaTagihan($b) + $this->dendaTagihan($b, $kelas));
 
                 return [

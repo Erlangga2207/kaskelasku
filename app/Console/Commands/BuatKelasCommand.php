@@ -62,6 +62,14 @@ class BuatKelasCommand extends Command
                 'password' => Hash::make($bendahara['password']),
             ]);
 
+            // Akun yang lahir dari perintah artisan dibuat oleh operator server,
+            // bukan oleh pengunjung yang mengisi form. Alamat emailnya sudah
+            // ditanggung orang yang mengetik perintah ini, jadi menahannya di
+            // halaman verifikasi hanya menghalangi tanpa membuktikan apa pun.
+            // Tidak lewat mass assignment: 'email_verified_at' sengaja tidak
+            // masuk $fillable supaya tidak pernah bisa datang dari request.
+            $user->markEmailAsVerified();
+
             $classroom = CurrentClassroom::withoutTenancy(function () use ($kelas, $user) {
                 $classroom = new Classroom([
                     'nama_kelas' => $kelas['nama_kelas'],

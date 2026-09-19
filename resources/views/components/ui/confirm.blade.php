@@ -5,6 +5,8 @@
     'pesan' => '',
     'tombol' => 'Hapus',
     'variant' => 'danger',
+    // Nilai tambahan yang ikut terkirim, mis. ['status' => 'dibatalkan'].
+    'input' => [],
 ])
 
 {{--
@@ -40,6 +42,9 @@
                     <form method="POST" action="{{ $action }}">
                         @csrf
                         @method($method)
+                        @foreach ($input as $nama => $nilai)
+                            <input type="hidden" name="{{ $nama }}" value="{{ $nilai }}">
+                        @endforeach
                         <x-ui.button type="submit" :variant="$variant" class="w-full sm:w-auto">
                             {{ $tombol }}
                         </x-ui.button>

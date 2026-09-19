@@ -58,6 +58,14 @@
     </x-ui.card>
 
     <x-ui.card judul="Daftar tunggakan" keterangan="Diurutkan dari yang terbesar" padat>
+        @unless ($tunggakan->isEmpty())
+            <x-slot:aksi>
+                <x-ui.button :href="route('pengingat.index')" variant="secondary" size="sm" icon="surat">
+                    Buat pengingat
+                </x-ui.button>
+            </x-slot:aksi>
+        @endunless
+
         @if ($tunggakan->isEmpty())
             <x-ui.empty ikon="cek" judul="Tidak ada tunggakan">
                 Seluruh tagihan yang sudah jatuh tempo sudah lunas.

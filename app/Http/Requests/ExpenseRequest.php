@@ -2,6 +2,8 @@
 
 namespace App\Http\Requests;
 
+use App\Models\BookClosing;
+use App\Models\Campaign;
 use App\Models\Expense;
 use App\Services\KasService;
 use App\Support\CurrentClassroom;
@@ -28,6 +30,15 @@ class ExpenseRequest extends FormRequest
                     fn ($q) => $q->where('classroom_id', CurrentClassroom::id())->orWhereNull('classroom_id')
                 ),
             ],
+            // Pengeluaran boleh ditandai milik satu campaign yang masih berjalan.
+            // Campaign yang dibatalkan tidak bisa dipilih: dananya sudah kembali
+            // menjadi deposit siswa, jadi tidak ada lagi yang bisa dibelanjakan.
+            'campaign_id' => [
+                'nullable',
+                Rule::exists('campaigns', 'id')
+                    ->where('classroom_id', CurrentClassroom::id())
+                    ->whereIn('status', ['aktif', 'selesai']),
+            ],
             'jumlah' => ['required', 'numeric', 'gt:0', 'max:9999999999'],
             'keterangan' => ['required', 'string', 'max:255'],
             'bukti' => [
@@ -39,33 +50,75 @@ class ExpenseRequest extends FormRequest
     }
 
     /**
-     * Kas kelas tidak boleh minus. Pengecekan ini WAJIB di server —
-     * menyembunyikan tombol di Blade bukan pengamanan.
+     * Uang kelas tidak boleh dibelanjakan melebihi haknya. Pengecekan ini WAJIB
+     * di server — menyembunyikan tombol di Blade bukan pengamanan.
+     *
+     * Sejak v1.1 batasnya ada dua, bukan satu:
+     *   - pengeluaran bertanda campaign  → sisa dana campaign itu sendiri
+     *   - pengeluaran biasa              → saldo bebas (kas − dana campaign)
+     *
+     * Tanpa pemisahan ini, uang studi tour bisa habis untuk beli spidol tanpa
+     * seorang pun sadar sampai hari keberangkatan.
      */
     public function after(): array
     {
         return [
+            // Penguncian tutup buku. Dua tanggal yang diperiksa saat mengubah:
+            // tanggal BARU (tidak boleh masuk periode tertutup) dan tanggal LAMA
+            // (baris yang duduk di periode tertutup tidak boleh disentuh sama
+            // sekali, termasuk dipindahkan keluar dari sana).
             function (Validator $validator) {
-                if ($validator->errors()->has('jumlah')) {
+                $lama = $this->route('pengeluaran');
+                $asal = $lama ? Expense::find($lama)?->tanggal : null;
+
+                foreach ([$asal, $this->input('tanggal')] as $tanggal) {
+                    if ($closing = BookClosing::penguncian($tanggal)) {
+                        $validator->errors()->add(
+                            'tanggal',
+                            $closing->pesanPenolakan($lama ? 'mengubah pengeluaran ini' : 'mencatat pengeluaran ini')
+                        );
+
+                        return;
+                    }
+                }
+            },
+            function (Validator $validator) {
+                if ($validator->errors()->has('jumlah') || $validator->errors()->has('campaign_id')) {
                     return;
                 }
 
                 $kas = app(KasService::class);
-                $tersedia = $kas->saldoKas();
 
-                // Saat mengubah, nominal lama dikembalikan dulu ke saldo.
+                // Saat mengubah, nominal lama dikembalikan dulu ke potnya masing-masing
+                // supaya Rp 50.000 yang jadi Rp 60.000 tidak dinilai sebagai Rp 110.000.
                 $lama = $this->route('pengeluaran');
+                $expense = $lama ? Expense::find($lama) : null;
 
-                if ($lama) {
-                    $expense = Expense::find($lama);
-                    $tersedia += $expense ? Uang::keSen($expense->jumlah) : 0;
+                $campaign = $this->input('campaign_id')
+                    ? Campaign::find($this->input('campaign_id'))
+                    : null;
+
+                // Kas fisik tetap jadi atap: sisa campaign di atas kertas tidak
+                // pernah boleh menarik uang yang tidak ada di kas.
+                $kasFisik = $kas->saldoKas() + ($expense ? Uang::keSen($expense->jumlah) : 0);
+
+                if ($campaign) {
+                    $sisaCampaign = $kas->sisaCampaign($campaign, $expense);
+                    $tersedia = max(0, min($sisaCampaign, $kasFisik));
+                    $pesan = $sisaCampaign <= $kasFisik
+                        ? 'Jumlah melebihi sisa dana campaign "'.$campaign->nama.'" ('
+                            .Uang::format(Uang::keDesimal(max(0, $sisaCampaign))).'). '
+                            .'Yang bisa dibelanjakan hanya uang yang sudah benar-benar terkumpul untuk campaign ini.'
+                        : 'Jumlah melebihi saldo kas yang tersedia ('.Uang::format(Uang::keDesimal($kasFisik)).').';
+                } else {
+                    $tersedia = max(0, $kas->saldoBebas($expense));
+                    $pesan = 'Jumlah melebihi saldo bebas ('.Uang::format(Uang::keDesimal($tersedia)).'). '
+                        .'Sisa saldo kas sudah menjadi milik campaign yang sedang berjalan — '
+                        .'tandai pengeluaran ini sebagai milik campaign bila memang untuk keperluan itu.';
                 }
 
                 if (Uang::keSen($this->input('jumlah')) > $tersedia) {
-                    $validator->errors()->add(
-                        'jumlah',
-                        'Jumlah melebihi saldo kas yang tersedia ('.Uang::format(Uang::keDesimal($tersedia)).').'
-                    );
+                    $validator->errors()->add('jumlah', $pesan);
                 }
             },
         ];
@@ -75,6 +128,7 @@ class ExpenseRequest extends FormRequest
     {
         return [
             'category_id.exists' => 'Kategori yang dipilih tidak tersedia untuk kelas ini.',
+            'campaign_id.exists' => 'Campaign yang dipilih tidak tersedia untuk kelas ini.',
             'jumlah.gt' => 'Jumlah pengeluaran harus lebih dari nol.',
             'tanggal.before_or_equal' => 'Tanggal pengeluaran tidak boleh di masa depan.',
             'bukti.max' => 'Ukuran bukti maksimal 2 MB.',

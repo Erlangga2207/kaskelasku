@@ -20,6 +20,9 @@ class DashboardController extends Controller
             'tunggakanTeratas' => $this->kas->daftarTunggakan($kelas)->take(5),
             'rekapTerbaru' => $this->kas->rekapPeriode()->reverse()->take(3)->values(),
             'riwayatTerbaru' => $this->kas->riwayatTransaksi()->take(6),
+            // Hanya campaign yang masih berjalan: yang dibatalkan sudah tidak
+            // menahan uang apa pun, jadi tidak perlu ikut memenuhi beranda.
+            'campaign' => $this->kas->rekapCampaign(hanyaBerjalan: true)->take(3),
         ]);
     }
 }

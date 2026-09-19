@@ -121,53 +121,77 @@ saldo tidak pernah tampil basi setelah ada transaksi baru.
 
 ## Fase 7 — v1.1: Iuran Insidental
 
-- [ ] Migration: `campaigns`, FK `bills.campaign_id`, FK `expenses.campaign_id`
-- [ ] CRUD campaign + pilih peserta (default semua siswa aktif)
-- [ ] Generate `bills` campaign (`period_id` NULL)
-- [ ] Pastikan mesin alokasi pembayaran **tidak diubah sama sekali** — kalau butuh
+- [x] Migration: `campaigns`, FK `bills.campaign_id`, FK `expenses.campaign_id`
+- [x] CRUD campaign + pilih peserta (default semua siswa aktif)
+- [x] Generate `bills` campaign (`period_id` NULL)
+- [x] Pastikan mesin alokasi pembayaran **tidak diubah sama sekali** — kalau butuh
       cabang kode baru, berarti desainnya salah
-- [ ] Dashboard memisahkan saldo bebas vs saldo campaign yang belum terpakai
-- [ ] Laporan campaign: terkumpul / terpakai / sisa
-- [ ] Campaign dibatalkan → pembayaran jadi deposit siswa, bukan terhapus
-- [ ] Progres campaign tampil di halaman kelas
+- [x] Dashboard memisahkan saldo bebas vs saldo campaign yang belum terpakai
+- [x] Laporan campaign: terkumpul / terpakai / sisa
+- [x] Campaign dibatalkan → pembayaran jadi deposit siswa, bukan terhapus
+- [x] Progres campaign tampil di halaman kelas
+
+**Belum dikerjakan:** deploy. Semua masih di branch `feat/fase-7-iuran-insidental`.
 
 ## Fase 8 — v1.1: Pengingat & QRIS
 
-- [ ] Generator teks pengingat, placeholder `{nama} {rincian} {total} {batas}`
-- [ ] Template bisa diubah per kelas
-- [ ] Tombol salin teks
-- [ ] Upload QRIS statis + nama pemilik per kelas, tampil di halaman kelas
+- [x] Generator teks pengingat, placeholder `{nama} {rincian} {total} {batas}`
+- [x] Template bisa diubah per kelas
+- [x] Tombol salin teks — per siswa dan beberapa siswa sekaligus dari daftar tunggakan
+- [x] Upload QRIS statis + nama pemilik per kelas, tampil di halaman kelas
+
+**Belum dikerjakan:** deploy. Semua masih di branch `feat/fase-8-pengingat-qris`.
 
 ## Fase 9 — v1.2: Tutup Buku & Serah Terima
 
-- [ ] Migration `book_closings`
-- [ ] Proses tutup buku: hitung ringkasan, simpan snapshot
-- [ ] Validasi server: transaksi dalam rentang tertutup ditolak saat edit/hapus
-- [ ] Buka kembali tutup buku terakhir (tercatat di audit log)
-- [ ] PDF laporan serah terima + kolom tanda tangan
-- [ ] Undang bendahara baru & alihkan kepemilikan kelas
+- [x] Migration `book_closings`
+- [x] Proses tutup buku: hitung ringkasan, simpan snapshot
+- [x] Validasi server: transaksi dalam rentang tertutup ditolak saat edit/hapus
+- [x] Buka kembali tutup buku terakhir (tercatat di audit log)
+- [x] PDF laporan serah terima + kolom tanda tangan
+- [x] Undang bendahara baru & alihkan kepemilikan kelas
+
+**Belum dikerjakan:** deploy. Semua masih di branch `feat/fase-9-tutup-buku`.
 
 ---
 
 ## Fase 10 — v2.0: Peluncuran Publik
 
-**Jangan mulai sebelum v1 dipakai nyata minimal satu semester.**
+**Dikerjakan lebih dulu atas permintaan sendiri, sebelum v1 dipakai nyata satu
+semester.** Catatan aslinya tetap berlaku dan sengaja tidak dihapus: yang paling
+menentukan bukan jumlah fitur, melainkan apakah ada kelas sungguhan yang
+memakainya tanpa kembali ke buku tulis.
 
-- [ ] Putuskan model biaya SEBELUM membuka pendaftaran
-- [ ] Landing page (struktur di PRD bagian 5.1)
-- [ ] Kebijakan Privasi + Syarat Layanan berbahasa Indonesia yang mudah dipahami
-- [ ] Pendaftaran mandiri + verifikasi email + rate limit
-- [ ] Wizard buat kelas setelah verifikasi
-- [ ] Pemilih kelas aktif (akun boleh punya beberapa kelas, disimpan di session)
-- [ ] Batas: 5 kelas per akun, 60 siswa per kelas
-- [ ] Checkbox persetujuan data siswa, waktunya dicatat
-- [ ] Kelas demo read-only dengan data contoh, direset otomatis
-- [ ] Ekspor data kelas ke CSV
-- [ ] Hapus kelas dengan tenggang 30 hari
-- [ ] Dashboard admin platform: **agregat saja**, tanpa detail transaksi
-- [ ] Penandaan kelas tidak aktif setelah 12 bulan + email pemberitahuan
-- [ ] **Audit isolasi menyeluruh**: ulangi seluruh test isolasi di semua modul
+- [x] Landing page (struktur di PRD bagian 5.1)
+- [x] Kebijakan Privasi + Syarat Layanan berbahasa Indonesia yang mudah dipahami
+- [x] Panduan penggunaan 10 langkah + bagian "Masalah yang sering terjadi"
+- [x] SEO: satu H1, title & meta description, Open Graph + Twitter Card,
+      JSON-LD SoftwareApplication + FAQPage, sitemap.xml, robots.txt, canonical
+- [x] Pendaftaran mandiri + verifikasi email + rate limit
+- [x] Wizard buat kelas setelah verifikasi, urutannya dipaksa di server
+- [x] Pemilih kelas aktif (akun boleh punya beberapa kelas, disimpan di session)
+- [x] Batas: 100 kelas se-sistem, 5 kelas per akun, 60 siswa per kelas — semuanya
+      dari config, bisa dinaikkan lewat `.env` tanpa deploy ulang
+- [x] Daftar tunggu menggantikan pendaftaran saat kuota se-sistem penuh
+- [x] Checkbox persetujuan data siswa, waktunya dicatat
+- [x] Kelas demo read-only dengan data contoh, direset otomatis lewat cron
+- [x] Ekspor data kelas ke CSV
+- [x] Hapus kelas dengan tenggang 30 hari + pemulihan + penghapusan permanen
+- [x] Dashboard admin platform: **agregat saja**, tanpa detail transaksi
+- [x] Penandaan kelas tidak aktif setelah 12 bulan
+- [x] **Audit isolasi menyeluruh**: 44 test isolasi, seluruh modul tercakup —
+      rinciannya di `PROGRESS.md`
+- [ ] Email pemberitahuan sebelum kelas ditandai nonaktif — sengaja ditunda,
+      lihat catatan di bawah
+- [ ] Putuskan model biaya sebelum kuota 100 kelas tercapai
 - [ ] Backup terjadwal + uji restore (backup yang belum pernah diuji bukan backup)
+
+**Yang sengaja ditunda.** Email pemberitahuan sebelum kelas ditandai nonaktif
+belum dibuat. Alasannya: penandaan nonaktif tidak menghapus apa pun dan bisa
+dibatalkan kapan saja, sedangkan mengirim email berjadwal ke alamat yang sudah
+12 bulan tidak dipakai berisiko menaikkan angka spam dan ikut merusak
+deliverability email verifikasi — satu-satunya email yang benar-benar kritis di
+aplikasi ini. Dikerjakan setelah reputasi domain terbentuk.
 
 **Selesai bila:** ada kelas lain di luar kelasmu yang memakainya selama sebulan
 tanpa kamu bantu secara manual.

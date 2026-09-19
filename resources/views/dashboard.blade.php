@@ -10,6 +10,27 @@
         <p class="mt-1.5 text-sm text-ink-faint">
             Dihitung ulang dari seluruh pembayaran dikurangi pengeluaran — bukan angka yang disimpan.
         </p>
+
+        {{-- Saldo besar bisa menyesatkan kalau sebagian sudah milik campaign,
+             jadi pembagiannya ditempel langsung di bawah angka utamanya. --}}
+        @if ($ringkasan['dana_campaign'] > 0)
+            <dl class="mt-4 grid gap-3 border-t border-line pt-4 sm:grid-cols-2">
+                <div>
+                    <dt class="text-xs font-medium text-ink-faint">Saldo bebas</dt>
+                    <dd class="text-xl font-bold tabular {{ $ringkasan['saldo_bebas'] < 0 ? 'text-keluar' : 'text-masuk' }}">
+                        {{ Uang::format(Uang::keDesimal($ringkasan['saldo_bebas'])) }}
+                    </dd>
+                    <dd class="text-xs text-ink-faint">Boleh dipakai untuk keperluan umum kelas</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-ink-faint">Dana campaign belum terpakai</dt>
+                    <dd class="text-xl font-bold tabular text-brand">
+                        {{ Uang::format(Uang::keDesimal($ringkasan['dana_campaign'])) }}
+                    </dd>
+                    <dd class="text-xs text-ink-faint">Sudah ada peruntukannya, bukan uang bebas</dd>
+                </div>
+            </dl>
+        @endif
     </section>
 
     <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -95,6 +116,43 @@
             @endif
         </x-ui.card>
     </div>
+
+    @if ($campaign->isNotEmpty())
+        <x-ui.card judul="Iuran insidental berjalan" padat>
+            <x-slot:aksi>
+                <x-ui.button :href="route('campaign.index')" variant="ghost" size="sm">Semua campaign</x-ui.button>
+            </x-slot:aksi>
+
+            <ul class="divide-y divide-line">
+                @foreach ($campaign as $baris)
+                    <li class="px-4 py-3 sm:px-5">
+                        <div class="flex items-center justify-between gap-3">
+                            <a href="{{ route('campaign.show', $baris['campaign']) }}"
+                               class="min-w-0 font-semibold underline-offset-2 hover:text-brand hover:underline">
+                                {{ $baris['campaign']->nama }}
+                            </a>
+                            <span class="text-sm text-ink-soft tabular">
+                                {{ Uang::format(Uang::keDesimal($baris['terkumpul'])) }}
+                                / {{ Uang::format(Uang::keDesimal($baris['tertagih'])) }}
+                            </span>
+                        </div>
+
+                        <div class="mt-2 flex items-center gap-2">
+                            <div class="h-2 flex-1 overflow-hidden rounded-full bg-surface"
+                                 role="progressbar" aria-valuenow="{{ $baris['persen'] }}" aria-valuemin="0" aria-valuemax="100"
+                                 aria-label="Ketercapaian {{ $baris['campaign']->nama }}">
+                                <div class="h-full rounded-full bg-brand transition-[width] duration-300"
+                                     style="width: {{ min($baris['persen'], 100) }}%"></div>
+                            </div>
+                            <span class="w-12 shrink-0 text-right text-xs font-semibold tabular text-ink-soft">
+                                {{ $baris['persen'] }}%
+                            </span>
+                        </div>
+                    </li>
+                @endforeach
+            </ul>
+        </x-ui.card>
+    @endif
 
     @if ($rekapTerbaru->isNotEmpty())
         <x-ui.card judul="Rekap periode terakhir" padat>

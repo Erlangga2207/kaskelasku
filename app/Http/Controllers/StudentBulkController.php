@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Student;
 use App\Services\KasService;
+use App\Support\Kapasitas;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -50,14 +51,34 @@ class StudentBulkController extends Controller
 
         $adaPeriodeTertagih = $this->kelas()->periods()->where('is_libur', false)->exists();
 
+        // Batas kapasitas dihitung sekali di depan, lalu dipakai sebagai jatah
+        // yang menyusut di dalam perulangan. Menempel 80 nama ke kelas berbatas
+        // 60 tidak boleh gagal total — 60 yang muat tetap masuk, sisanya
+        // dilaporkan apa adanya supaya bendahara tahu persis siapa yang belum.
+        $sisaKuota = Kapasitas::sisaKuotaSiswa($this->kelas());
+
+        if ($sisaKuota <= 0) {
+            return back()->withInput()->with('galat', sprintf(
+                'Kelas ini sudah mencapai batas %d siswa, jadi tidak ada yang bisa ditambahkan lagi.',
+                Kapasitas::batasSiswaPerKelas(),
+            ));
+        }
+
         $dibuat = 0;
         $dilewati = [];
+        $takMuat = [];
         $tagihan = 0;
 
-        DB::transaction(function () use ($baris, $namaAda, &$nomorTerpakai, &$nomorBerikutnya, $data, &$dibuat, &$dilewati, &$tagihan) {
+        DB::transaction(function () use ($baris, $namaAda, &$nomorTerpakai, &$nomorBerikutnya, $data, &$dibuat, &$dilewati, &$takMuat, &$tagihan, $sisaKuota) {
             foreach ($baris as $item) {
                 if (in_array(mb_strtolower($item['nama']), $namaAda, true)) {
                     $dilewati[] = $item['nama'];
+
+                    continue;
+                }
+
+                if ($dibuat >= $sisaKuota) {
+                    $takMuat[] = $item['nama'];
 
                     continue;
                 }
@@ -88,6 +109,16 @@ class StudentBulkController extends Controller
         if ($dilewati !== []) {
             $pesan .= ' Dilewati karena namanya sudah ada: '.implode(', ', array_slice($dilewati, 0, 5))
                 .(count($dilewati) > 5 ? ' dan '.(count($dilewati) - 5).' lainnya' : '').'.';
+        }
+
+        if ($takMuat !== []) {
+            return redirect()->route('siswa.index')->with('peringatan', $pesan.sprintf(
+                ' %d nama TIDAK masuk karena kelas sudah mencapai batas %d siswa: %s%s.',
+                count($takMuat),
+                Kapasitas::batasSiswaPerKelas(),
+                implode(', ', array_slice($takMuat, 0, 5)),
+                count($takMuat) > 5 ? ' dan '.(count($takMuat) - 5).' lainnya' : '',
+            ));
         }
 
         // Menempel 30 nama ke kelas yang sudah punya periode HARUS menghasilkan

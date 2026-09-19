@@ -54,6 +54,7 @@ class HalamanBendaharaTest extends TestCase
             route('pengeluaran.index'),
             route('pengeluaran.create'),
             route('pengeluaran.edit', $pengeluaran),
+            route('pengingat.index'),
             route('pengaturan.edit'),
         ];
 

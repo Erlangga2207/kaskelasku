@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\PeriodeTerkunciException;
 use App\Http\Requests\ExpenseRequest;
+use App\Models\Campaign;
 use App\Models\Expense;
 use App\Models\ExpenseCategory;
 use App\Services\KasService;
@@ -23,7 +25,7 @@ class ExpenseController extends Controller
         $sampai = $request->query('sampai');
 
         $pengeluaran = $this->kelas()->expenses()
-            ->with('category')
+            ->with(['category', 'campaign'])
             ->when($dari, fn ($q) => $q->whereDate('tanggal', '>=', $dari))
             ->when($sampai, fn ($q) => $q->whereDate('tanggal', '<=', $sampai))
             ->orderByDesc('tanggal')
@@ -34,6 +36,8 @@ class ExpenseController extends Controller
         return view('pengeluaran.index', [
             'daftarPengeluaran' => $pengeluaran,
             'saldoKas' => $this->kas->saldoKas(),
+            'saldoBebas' => $this->kas->saldoBebas(),
+            'danaCampaign' => $this->kas->danaCampaignTertahan(),
             'dari' => $dari,
             'sampai' => $sampai,
         ]);
@@ -44,7 +48,10 @@ class ExpenseController extends Controller
         return view('pengeluaran.form', [
             'pengeluaran' => new Expense(['tanggal' => now()->toDateString()]),
             'kategori' => $this->daftarKategori(),
+            'campaign' => $this->daftarCampaign(),
             'saldoKas' => $this->kas->saldoKas(),
+            'saldoBebas' => $this->kas->saldoBebas(),
+            'kas' => $this->kas,
         ]);
     }
 
@@ -56,6 +63,7 @@ class ExpenseController extends Controller
             $expense = Expense::create([
                 'tanggal' => $data['tanggal'],
                 'category_id' => $data['category_id'],
+                'campaign_id' => $data['campaign_id'] ?? null,
                 'jumlah' => Uang::keDesimal(Uang::keSen($data['jumlah'])),
                 'keterangan' => $data['keterangan'],
             ]);
@@ -69,19 +77,27 @@ class ExpenseController extends Controller
             return $expense;
         });
 
+        $sisa = $expense->campaign_id
+            ? 'Sisa dana campaign '.Uang::format(Uang::keDesimal($this->kas->sisaCampaign($expense->campaign))).'.'
+            : 'Sisa saldo bebas '.Uang::format(Uang::keDesimal($this->kas->saldoBebas())).'.';
+
         return redirect()->route('pengeluaran.index')->with(
             'sukses',
-            'Pengeluaran '.Uang::format($expense->jumlah).' dicatat. Sisa saldo kas '
-                .Uang::format(Uang::keDesimal($this->kas->saldoKas())).'.'
+            'Pengeluaran '.Uang::format($expense->jumlah).' dicatat. '.$sisa
         );
     }
 
     public function edit(string $pengeluaran): View
     {
+        $expense = $this->cariPengeluaran($pengeluaran);
+
         return view('pengeluaran.form', [
-            'pengeluaran' => $this->cariPengeluaran($pengeluaran),
+            'pengeluaran' => $expense,
             'kategori' => $this->daftarKategori(),
+            'campaign' => $this->daftarCampaign($expense),
             'saldoKas' => $this->kas->saldoKas(),
+            'saldoBebas' => $this->kas->saldoBebas($expense),
+            'kas' => $this->kas,
         ]);
     }
 
@@ -94,6 +110,7 @@ class ExpenseController extends Controller
             $expense->update([
                 'tanggal' => $data['tanggal'],
                 'category_id' => $data['category_id'],
+                'campaign_id' => $data['campaign_id'] ?? null,
                 'jumlah' => Uang::keDesimal(Uang::keSen($data['jumlah'])),
                 'keterangan' => $data['keterangan'],
             ]);
@@ -120,7 +137,11 @@ class ExpenseController extends Controller
 
         // Soft delete: berkas bukti sengaja tidak ikut dihapus supaya jejaknya
         // masih bisa ditelusuri lewat audit log bila terjadi sengketa.
-        $expense->delete();
+        try {
+            $expense->delete();
+        } catch (PeriodeTerkunciException $e) {
+            return back()->with('galat', $e->getMessage());
+        }
 
         return redirect()->route('pengeluaran.index')->with('sukses', "Pengeluaran {$jumlah} dihapus.");
     }
@@ -142,6 +163,30 @@ class ExpenseController extends Controller
     protected function cariPengeluaran(string $id): Expense
     {
         return $this->kelas()->expenses()->findOrFail($id);
+    }
+
+    /**
+     * Campaign yang masih boleh menerima pengeluaran.
+     *
+     * Campaign lama yang sudah dibatalkan tidak muncul, kecuali memang sedang
+     * menempel pada pengeluaran yang sedang diubah — supaya riwayatnya tidak
+     * hilang diam-diam dari formulir.
+     */
+    protected function daftarCampaign(?Expense $kecuali = null): array
+    {
+        return Campaign::where(function ($query) use ($kecuali) {
+            $query->berjalan();
+
+            if ($kecuali?->campaign_id) {
+                // Dibungkus closure supaya "or" ini tidak pernah lolos dari
+                // filter classroom_id milik global scope.
+                $query->orWhere('id', $kecuali->campaign_id);
+            }
+        })
+            ->urutBaru()
+            ->get()
+            ->mapWithKeys(fn (Campaign $c) => [$c->id => $c->nama])
+            ->all();
     }
 
     /** Kategori bawaan sistem + kategori buatan kelas ini. */

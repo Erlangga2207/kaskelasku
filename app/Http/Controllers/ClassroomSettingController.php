@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\ReminderTemplateRequest;
 use App\Models\Payment;
 use App\Models\Period;
+use App\Services\PengingatService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use App\Support\Uang;
@@ -12,11 +14,16 @@ use Illuminate\View\View;
 
 class ClassroomSettingController extends Controller
 {
+    public function __construct(private readonly PengingatService $pengingat) {}
+
     public function edit(): View
     {
         return view('pengaturan.edit', [
             'kelas' => $this->kelas(),
             'tipeTerkunci' => $this->tipePeriodeTerkunci(),
+            'templatePengingat' => $this->pengingat->template($this->kelas()),
+            'templateBawaan' => PengingatService::TEMPLATE_BAWAAN,
+            'contohPengingat' => $this->pengingat->contoh(),
         ]);
     }
 
@@ -58,6 +65,18 @@ class ClassroomSettingController extends Controller
         $this->kelas()->update($data);
 
         return redirect()->route('pengaturan.edit')->with('sukses', 'Pengaturan kelas disimpan.');
+    }
+
+    /**
+     * Template pengingat disimpan terpisah dari form pengaturan utama: isinya
+     * teks panjang dengan pratinjau sendiri, dan menggabungkannya membuat satu
+     * form raksasa yang gagal seluruhnya hanya karena satu placeholder salah.
+     */
+    public function pengingat(ReminderTemplateRequest $request): RedirectResponse
+    {
+        $this->kelas()->update($request->validated());
+
+        return redirect()->route('pengaturan.edit')->with('sukses', 'Template pengingat disimpan.');
     }
 
     protected function tipePeriodeTerkunci(): bool

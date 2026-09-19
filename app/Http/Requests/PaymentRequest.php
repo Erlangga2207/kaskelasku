@@ -2,7 +2,10 @@
 
 namespace App\Http\Requests;
 
+use App\Models\BookClosing;
 use App\Support\CurrentClassroom;
+use App\Support\Uang;
+use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -30,7 +33,7 @@ class PaymentRequest extends FormRequest
 
             'mode_alokasi' => ['nullable', Rule::in(['otomatis', 'manual'])],
             'alokasi' => ['nullable', 'array'],
-            'alokasi.*' => ['nullable', 'numeric', 'min:0'],
+            'alokasi.*' => ['nullable', 'numeric', 'min:0', 'max:9999999999'],
 
             // Validasi MIME asli, bukan sekadar ekstensi nama berkas.
             'bukti' => [
@@ -39,6 +42,71 @@ class PaymentRequest extends FormRequest
                 'mimetypes:image/jpeg,image/png,application/pdf',
             ],
         ];
+    }
+
+    /**
+     * Total alokasi manual tidak boleh melebihi uang yang benar-benar diterima.
+     *
+     * KasService juga menolaknya, tapi di sana penolakannya baru terjadi saat
+     * menulis ke database dan muncul sebagai pesan galat umum. Dicek di sini
+     * supaya bendahara dapat pesan yang menempel di bagian alokasinya, lengkap
+     * dengan angka selisihnya.
+     */
+    public function after(): array
+    {
+        return [
+            // Penguncian tutup buku. Penolakan yang sebenarnya terjadi di model
+            // (trait TerkunciTutupBuku) dan tidak bisa dilewati lewat jalur mana
+            // pun; yang dikerjakan di sini hanya memindahkan pesannya ke bawah
+            // kolom tanggal, tempat bendahara bisa langsung memperbaikinya.
+            function (Validator $validator) {
+                if ($closing = BookClosing::penguncian($this->input('tanggal'))) {
+                    $validator->errors()->add('tanggal', $closing->pesanPenolakan('mencatat pembayaran ini'));
+                }
+            },
+            function (Validator $validator) {
+                if ($this->input('mode_alokasi') !== 'manual') {
+                    return;
+                }
+
+                $total = $this->totalAlokasiSen();
+                $dibayar = Uang::keSen($this->input('jumlah'));
+
+                if ($total <= $dibayar) {
+                    return;
+                }
+
+                $validator->errors()->add('alokasi', sprintf(
+                    'Total alokasi %s melebihi jumlah pembayaran %s (kelebihan %s). '
+                        .'Kurangi alokasinya, atau naikkan jumlah yang dibayar.',
+                    Uang::format(Uang::keDesimal($total)),
+                    Uang::format(Uang::keDesimal($dibayar)),
+                    Uang::format(Uang::keDesimal($total - $dibayar)),
+                ));
+            },
+        ];
+    }
+
+    /** Nilai non-angka diabaikan di sini; rule 'alokasi.*' yang menolaknya. */
+    protected function totalAlokasiSen(): int
+    {
+        $rincian = $this->input('alokasi');
+
+        if (! is_array($rincian)) {
+            return 0;
+        }
+
+        $total = 0;
+
+        foreach ($rincian as $nilai) {
+            if (! is_scalar($nilai) || ! is_numeric($nilai)) {
+                continue;
+            }
+
+            $total += Uang::keSen($nilai);
+        }
+
+        return $total;
     }
 
     public function messages(): array

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Http\Middleware\SetCurrentClassroom;
 use App\Models\AuditLog;
 use App\Models\User;
 use App\Support\CurrentClassroom;
@@ -86,7 +87,14 @@ class AuthBendaharaTest extends TestCase
         $this->assertGuest();
     }
 
-    public function test_bendahara_tanpa_kelas_tidak_bisa_masuk_dashboard(): void
+    /**
+     * Sampai v1.2 akun tanpa kelas mustahil — kelas selalu lahir bersama
+     * bendaharanya lewat perintah artisan, jadi keadaan ini dijawab 403.
+     * Sejak v2.0 pendaftaran dibuka untuk umum: akun ada lebih dulu, kelasnya
+     * menyusul. Yang benar sekarang bukan menolak, melainkan mengantar orangnya
+     * ke langkah berikutnya — verifikasi email dulu, baru wizard buat kelas.
+     */
+    public function test_bendahara_tanpa_kelas_diantar_ke_wizard(): void
     {
         $user = User::create([
             'nama' => 'Bendahara Tanpa Kelas',
@@ -94,7 +102,17 @@ class AuthBendaharaTest extends TestCase
             'password' => 'RahasiaKuat123',
         ]);
 
-        $this->actingAs($user)->get(route('dashboard'))->assertForbidden();
+        // Belum terverifikasi: tertahan di halaman verifikasi, bukan di wizard.
+        $this->actingAs($user)->get(route('dashboard'))
+            ->assertRedirect(route('verifikasi.notice'));
+
+        $user->markEmailAsVerified();
+
+        $this->actingAs($user)->get(route('dashboard'))
+            ->assertRedirect(route('wizard.kelas'));
+
+        // Dan yang penting: tidak ada kelas milik orang lain yang ikut terbuka.
+        $this->assertNull(session(SetCurrentClassroom::SESSION_KEY));
     }
 
     public function test_session_kelas_milik_orang_lain_diabaikan(): void

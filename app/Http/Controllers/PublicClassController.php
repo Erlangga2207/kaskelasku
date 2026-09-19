@@ -7,7 +7,9 @@ use App\Models\Student;
 use App\Services\KasService;
 use App\Support\CurrentClassroom;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Halaman kelas: read-only, tanpa login, dibuka dengan token pada URL.
@@ -24,7 +26,7 @@ class PublicClassController extends Controller
     {
         $kelas = CurrentClassroom::getOrFail();
 
-        $tagihan = Bill::with(['period', 'allocations'])->get();
+        $tagihan = Bill::with(['period', 'campaign', 'allocations'])->get();
 
         $siswa = Student::aktif()->urutAbsen()->get()->map(function (Student $s) use ($tagihan) {
             $miliknya = $tagihan->where('student_id', $s->id)
@@ -33,7 +35,7 @@ class PublicClassController extends Controller
             return [
                 'siswa' => $s,
                 'baris' => $miliknya->map(fn (Bill $b) => [
-                    'label' => $b->period?->label ?? 'Iuran insidental',
+                    'label' => $b->label(),
                     'nominal' => $b->nominal,
                     'status' => $this->kas->statusTagihan($b),
                     'sisa' => $this->kas->sisaTagihan($b),
@@ -46,8 +48,32 @@ class PublicClassController extends Controller
             'kelas' => $kelas,
             'ringkasan' => $this->kas->ringkasan($kelas),
             'rekap' => $this->kas->rekapPeriode(),
+            // Progres campaign boleh tampil di sini: isinya angka kelas, bukan
+            // data pribadi tambahan. Campaign yang dibatalkan tidak ditampilkan.
+            'campaign' => $this->kas->rekapCampaign(hanyaBerjalan: true),
             'daftarSiswa' => $siswa,
             'diperbaruiPada' => now(),
+        ]);
+    }
+
+    /**
+     * Gambar QRIS kelas.
+     *
+     * Berkasnya tetap di storage privat, tidak di folder yang bisa diakses web
+     * langsung. Satu-satunya pintu masuk adalah route ini, dan route ini hanya
+     * bisa dicapai dengan token kelas yang benar — jadi gambar QRIS kelas A
+     * tidak pernah bisa dibuka lewat token kelas B.
+     */
+    public function qris(): Response
+    {
+        $kelas = CurrentClassroom::getOrFail();
+
+        abort_if($kelas->qris_path === null, 404);
+        abort_unless(Storage::disk('local')->exists($kelas->qris_path), 404);
+
+        return Storage::disk('local')->response($kelas->qris_path, null, [
+            'X-Content-Type-Options' => 'nosniff',
+            'Content-Disposition' => 'inline',
         ]);
     }
 

@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\PeriodeTerkunciException;
 use App\Http\Requests\PaymentRequest;
+use App\Models\Bill;
 use App\Models\Payment;
 use App\Models\Student;
 use App\Services\KasService;
@@ -40,29 +42,30 @@ class PaymentController extends Controller
         ]);
     }
 
-    public function create(Request $request): View|RedirectResponse
+    public function create(Request $request): View
     {
-        // Tanpa periode tidak ada tagihan, sehingga setiap pembayaran mendarat
-        // sebagai deposit menggantung — uangnya masuk tapi rekap per periode
-        // tetap Rp 0. Bendahara diarahkan membuat periode dulu, bukan dibiarkan
-        // mencatat uang ke ruang kosong.
-        if (! $this->kelas()->periods()->where('is_libur', false)->exists()) {
-            return redirect()->route('periode.index')->with(
-                'peringatan',
-                'Kelas ini belum punya periode iuran, jadi belum ada tagihan yang bisa dibayar. '
-                    .'Buat periodenya dulu di halaman ini — pembayaran yang dicatat sekarang hanya akan '
-                    .'mengendap sebagai deposit dan tidak muncul di rekap per periode.'
-            );
-        }
-
+        // Penjagaan "belum ada sumber tagihan" pindah ke middleware 'siap' di
+        // v2.0. Bukan cuma karena rapi: penjagaan yang dulu ada di sini hanya
+        // menutup satu route, sedangkan URL /pembayaran, /pengeluaran, dan
+        // /laporan tetap bisa diketik langsung. Ia juga salah sejak ada iuran
+        // insidental — kelas yang punya campaign hidup memang sudah punya
+        // tagihan meski belum punya satu pun periode rutin.
         $siswa = $request->query('siswa')
             ? $this->kelas()->students()->find($request->query('siswa'))
             : null;
 
+        // Urutannya tetap seperti yang dipakai alokasi otomatis (terlama dulu);
+        // pengelompokan di bawah hanya memisah tampilannya, tidak mengubah urutan.
+        $tagihan = $siswa ? $this->kas->tagihanBelumLunas($siswa) : collect();
+
         return view('pembayaran.form', [
             'daftarSiswa' => $this->kelas()->students()->aktif()->urutAbsen()->get(),
             'siswaTerpilih' => $siswa,
-            'tagihan' => $siswa ? $this->kas->tagihanBelumLunas($siswa) : collect(),
+            'tagihan' => $tagihan,
+            'tagihanRutin' => $tagihan->filter(fn (Bill $b) => $b->period_id !== null)->values(),
+            // Satu campaign hanya pernah menerbitkan satu tagihan per siswa,
+            // jadi daftar ini otomatis berisi satu baris per iuran insidental.
+            'tagihanInsidental' => $tagihan->filter(fn (Bill $b) => $b->campaign_id !== null)->values(),
             'deposit' => $siswa ? $this->kas->depositSiswa($siswa) : 0,
             'kas' => $this->kas,
         ]);
@@ -88,9 +91,11 @@ class PaymentController extends Controller
 
                 $rincian = array_filter($data['alokasi'] ?? [], fn ($v) => $v !== null && $v !== '');
 
-                if (($data['mode_alokasi'] ?? 'otomatis') === 'manual' && $rincian !== []) {
+                if (($data['mode_alokasi'] ?? 'otomatis') === 'manual') {
+                    // Sengaja TIDAK memanggil alokasikanDeposit sesudahnya: sisa yang
+                    // tidak dibagi bendahara memang harus mengendap sebagai deposit,
+                    // bukan dilempar balik ke tagihan terlama oleh mesin otomatis.
                     $this->kas->alokasikanManual($payment, $rincian);
-                    // Sisa yang tidak dialokasikan manual tetap jadi deposit siswa.
                 } else {
                     $this->kas->alokasikanDeposit($payment->student);
                 }
@@ -116,7 +121,13 @@ class PaymentController extends Controller
         $nama = $payment->student->nama;
         $jumlah = Uang::format($payment->jumlah);
 
-        $this->kas->hapusPembayaran($payment);
+        // Penolakannya datang dari model, bukan dari sini — controller hanya
+        // menerjemahkannya jadi pesan, bukan jadi halaman galat 500.
+        try {
+            $this->kas->hapusPembayaran($payment);
+        } catch (PeriodeTerkunciException $e) {
+            return back()->with('galat', $e->getMessage());
+        }
 
         return redirect()->route('pembayaran.index')->with(
             'sukses',
